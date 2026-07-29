@@ -1,0 +1,30 @@
+/* MOLA 뷰어-에디터 통합 — 손편집 파일. index.html(생성 파일)에는 참조만 있다. */
+
+.modebar { display: flex; align-items: center; gap: 9px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 6px; width: max-content; margin: 0 0 12px; }
+.modebar button { font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  padding: 9px 22px; border-radius: 999px; border: 1.5px solid transparent;
+  background: transparent; color: var(--muted); transition: .12s; }
+.modebar button:hover { color: var(--ink); background: var(--panel); }
+.modebar button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* 모드 전환: .app 에 mode-editor 클래스가 붙으면 뷰어 요소를 숨긴다.
+   ([hidden] 속성은 .work { display:grid } 같은 저자 규칙에 지므로 클래스로 처리) */
+.app.mode-editor .workbar, .app.mode-editor .work { display: none; }
+.app:not(.mode-editor) .editorwrap { display: none; }
+
+.editorwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 11px; }
+.editorwrap .editbar { display: flex; gap: 9px; align-items: center; padding: 0 2px 10px; }
+.editorwrap .editbar .estatus { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.editorwrap .frame-slot { flex: 1; min-height: 480px; position: relative;
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+.editorwrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.editorwrap .frame-msg { position: absolute; inset: 0; display: flex; flex-direction: column;
+  gap: 12px; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
+
+button.ghost { font-family: inherit; font-size: 13px; font-weight: 700; padding: 9px 14px;
+  border-radius: var(--r-ctrl); border: 1px solid var(--accent-line); background: var(--accent-soft);
+  color: var(--accent-2); cursor: pointer; }
+button.ghost:hover { background: var(--panel); }
+button.ghost:disabled { opacity: .45; cursor: default; }

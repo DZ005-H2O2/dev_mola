@@ -1,0 +1,28 @@
+{
+  "files": {
+    "main.css": "./static/css/main.31ab6def.css",
+    "main.js": "./static/js/main.4a641a67.js",
+    "popup.css": "./static/css/popup.31ab6def.css",
+    "popup.js": "./static/js/popup.25023833.js",
+    "duo.css": "./static/css/duo.645d5030.css",
+    "duo.js": "./static/js/duo.d6c7886f.js",
+    "closable.css": "./static/css/closable.31ab6def.css",
+    "closable.js": "./static/js/closable.683be3dc.js",
+    "static/js/535.c5fc3b49.chunk.js": "./static/js/535.c5fc3b49.chunk.js",
+    "static/js/848.461d42ae.chunk.js": "./static/js/848.461d42ae.chunk.js",
+    "static/js/588.c0690e49.chunk.js": "./static/js/588.c0690e49.chunk.js",
+    "static/js/204.76e32fa5.chunk.js": "./static/js/204.76e32fa5.chunk.js",
+    "static/js/928.cbf6ab20.chunk.js": "./static/js/928.cbf6ab20.chunk.js",
+    "static/media/indigo-ketcher-norender-1.45.0.wasm": "./static/media/indigo-ketcher-norender-1.45.0.e869d27935bccd242138.wasm",
+    "static/media/Telex-Regular.woff2": "./static/media/Telex-Regular.5a3d2f1142eb13f7703d.woff2",
+    "closable.html": "./closable.html",
+    "popup.html": "./popup.html",
+    "duo.html": "./duo.html",
+    "index.html": "./index.html",
+    "serve.json": "./serve.json"
+  },
+  "entrypoints": [
+    "static/css/main.31ab6def.css",
+    "static/js/main.4a641a67.js"
+  ]
+}

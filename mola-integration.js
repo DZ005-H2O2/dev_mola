@@ -5,7 +5,17 @@
 (function () {
   "use strict";
 
-  const EDITOR_SRC = "assets/editor/index.html";
+  // Ketcher hiddenControls 로 숨기는 툴바 항목 — 늘어날 수 있어 배열로 관리한다.
+  const HIDDEN_CONTROLS = [
+    "recognize",      // 이미지→구조 인식 — standalone 환경엔 오프라인 대안이 없어 영구 비활성
+    "create-monomer", // 매크로분자(펩타이드/RNA) 전용 — 이 배포판 범위 밖
+    // 이미지 첨부 도구 — 사용자 요청으로 제외. 내부 툴바 키는 "image"가 아니라
+    // 복수형 "images"다(번들 상수 p.u11 → "images", DOM data-testid도 동일하게
+    // "images" — main.4a641a67.js 로 실측 확인). "image" 로는 안 숨겨진다.
+    "images",
+  ];
+  const EDITOR_SRC =
+    "assets/editor/index.html?hiddenControls=" + HIDDEN_CONTROLS.join(",");
   const READY_TIMEOUT_MS = 60000;
 
   const ui = {
@@ -27,7 +37,12 @@
   modebar.innerHTML =
     '<button type="button" aria-pressed="true" data-mode="viewer">뷰어</button>' +
     '<button type="button" aria-pressed="false" data-mode="editor">에디터</button>';
-  heroEl.insertAdjacentElement("afterend", modebar);
+  // 히어로 *안*에 넣어 별도 줄을 없앤다 — header.hero 는 flex row(align-items:center,
+  // flex-wrap:wrap)이고 지금까지 유일한 자식이던 .hero-brand 옆에 두 번째 flex
+  // 아이템으로 얹히므로, 히어로 높이는 늘지 않고(.hero-brand 가 이미 더 크다)
+  // 그만큼 .work(캔버스 영역)가 세로 공간을 되찾는다. (좁은 화면에서는
+  // flex-wrap 덕에 자연스럽게 다음 줄로 내려간다.)
+  heroEl.appendChild(modebar);
 
   const editorWrap = document.createElement("section");
   editorWrap.className = "panel editorwrap";

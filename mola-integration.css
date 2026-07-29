@@ -18,7 +18,8 @@
 .app:not(.mode-editor) .editorwrap { display: none; }
 
 .editorwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 11px; }
-.editorwrap .editbar { display: flex; gap: 9px; align-items: center; padding: 0 2px 10px; }
+.editorwrap .editbar { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; padding: 0 2px 10px; }
+.editorwrap .editbar .editbar-actions { display: flex; flex-wrap: wrap; gap: 9px; }
 .editorwrap .editbar .estatus { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .editorwrap .frame-slot { flex: 1; min-height: 480px; position: relative;
   border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }

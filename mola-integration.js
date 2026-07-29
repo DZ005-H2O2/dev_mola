@@ -50,6 +50,12 @@
   editorWrap.innerHTML =
     '<div class="editbar">' +
     '  <button id="sendToViewerBtn" class="ghost" type="button">← 뷰어로 보내기</button>' +
+    '  <div class="editbar-actions">' +
+    '    <button id="copyImageBtn" class="ghost" type="button" disabled>📋 그림 복사</button>' +
+    '    <button id="savePngBtn" class="ghost" type="button" disabled>PNG 저장</button>' +
+    '    <button id="saveSvgBtn" class="ghost" type="button" disabled>SVG 저장</button>' +
+    '    <button id="saveKetBtn" class="ghost" type="button" disabled>작업본 저장</button>' +
+    "  </div>" +
     '  <span class="estatus" id="editorStatus"></span>' +
     "</div>" +
     '<div class="frame-slot" id="editorFrameSlot">' +
@@ -120,6 +126,9 @@
     // change 이벤트는 업스트림이 '취약'하다고 표시한 레거시 경로다 — 실패해도 조용히 넘어간다
     try {
       k.editor.subscribe("change", () => {
+        // 저장 버튼 활성 상태는 디바운스 없이 즉시 반영 — 자동 임시저장(1.5초 뒤)과는
+        // 별개 관심사라 같은 타이머를 공유하지 않는다.
+        updateSaveButtonsState();
         clearTimeout(autosaveTimer);
         autosaveTimer = setTimeout(async () => {
           try { await idbSet(await k.getKet()); } catch { /* 조용히 */ }
@@ -127,6 +136,123 @@
       });
     } catch { /* 구독 실패 — 임시저장 없이 진행 */ }
   }
+
+  // ── 저장 버튼 바 (그림 복사·PNG·SVG·작업본) ──────────────────────
+  // 캔버스가 비면 generateImage()가 던지므로(Task 1) 버튼을 선제적으로 비활성화한다.
+  // isBlank() 판정 자체가 실패하면 "비어있지 않다"로 간주한다 — sendToEditor의
+  // 덮어쓰기 확인(I2)과 같은 안전 쪽 기본값이다: 버튼이 눌려도 되는 상태로 두고,
+  // 실제로 비어 있었다면 generateImage가 던지는 에러를 그대로 보여주면 된다.
+  const copyImageBtn = document.getElementById("copyImageBtn");
+  const savePngBtn = document.getElementById("savePngBtn");
+  const saveSvgBtn = document.getElementById("saveSvgBtn");
+  const saveKetBtn = document.getElementById("saveKetBtn");
+
+  function updateSaveButtonsState() {
+    const k = ui.ketcher;
+    let blank = true;
+    if (k) {
+      try { blank = k.editor.struct().isBlank(); } catch { blank = false; }
+    }
+    [copyImageBtn, savePngBtn, saveSvgBtn, saveKetBtn].forEach((b) => {
+      if (b) b.disabled = blank;
+    });
+  }
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function saveTimestamp() {
+    const d = new Date();
+    return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
+      "-" + pad2(d.getHours()) + pad2(d.getMinutes());
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  // 성공 피드백은 몇 초 뒤 스스로 지운다 — 에러 메시지(else 분기들)는 사용자가
+  // 다음 조작을 할 때까지 그대로 남겨 원인을 놓치지 않게 한다.
+  let saveStatusClearTimer = 0;
+  function flashSaveStatus(st, msg) {
+    st.textContent = msg;
+    clearTimeout(saveStatusClearTimer);
+    saveStatusClearTimer = setTimeout(() => {
+      if (st.textContent === msg) st.textContent = "";
+    }, 2500);
+  }
+
+  // 네 버튼 공통 골격: 준비 확인 → 빈 캔버스 가드 → 개별 동작(fn) → 에러 표면화.
+  // fn 안에서 던지는 에러(예: Task 1의 "내보낼 구조가 없습니다")도 여기서 잡는다 —
+  // updateSaveButtonsState()의 isBlank() 판정과 실제 클릭 시점 사이에 경합이
+  // 있을 수 있어(버튼이 비활성화되기 직전 클릭 등) 이중 방어다.
+  async function withSaveGuard(fn) {
+    const st = document.getElementById("editorStatus");
+    const k = ui.ketcher;
+    if (!k) { st.textContent = "에디터가 아직 준비되지 않았습니다."; return; }
+    let blank;
+    try { blank = k.editor.struct().isBlank(); } catch { blank = false; }
+    if (blank) { st.textContent = "캔버스가 비어 있어 저장할 내용이 없습니다."; return; }
+    try {
+      await fn(k, st);
+    } catch (e) {
+      st.textContent = e && e.message ? e.message : String(e);
+    }
+  }
+
+  copyImageBtn.addEventListener("click", () => withSaveGuard(async (k, st) => {
+    // 사용자 제스처 체인 보존: clipboard.write를 generateImage 완료 "전"에 호출해야
+    // 한다(await 뒤에 호출하면 Safari/Firefox가 제스처 위임이 끊겼다고 보고 거부한다).
+    // ClipboardItem 생성자는 Promise 값을 받을 수 있으므로(MDN) generateImage()의
+    // Promise를 기다리지 않고 그대로 넘긴다. 일부 브라우저는 이 Promise 형태를
+    // 지원하지 않으므로(TypeError 등) 그 경우 기존 await 방식으로 폴백한다.
+    const imagePromise = k.generateImage("", { outputFormat: "png" });
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": imagePromise }),
+      ]);
+      flashSaveStatus(st, "복사했습니다.");
+      return;
+    } catch (e) {
+      // imagePromise 자체가 실패한 거라면(캔버스 문제 등 진짜 에러) 클립보드 미지원이
+      // 아니므로 그대로 전파해 withSaveGuard가 원인 메시지를 보여주게 한다.
+      const settled = await Promise.allSettled([imagePromise]);
+      if (settled[0].status === "rejected") throw settled[0].reason;
+    }
+    // 여기 도달 = Promise 값을 받는 ClipboardItem을 브라우저가 지원하지 않는 경우
+    // (예: 구버전 Firefox) — 완성된 Blob으로 다시 시도한다.
+    try {
+      const blob = await imagePromise;
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      flashSaveStatus(st, "복사했습니다.");
+    } catch {
+      // 클립보드 API는 보안 컨텍스트/권한이 없으면 실패한다 — PNG 저장으로 안내
+      st.textContent = "클립보드를 쓸 수 없습니다 — PNG 저장을 이용하세요.";
+    }
+  }));
+
+  savePngBtn.addEventListener("click", () => withSaveGuard(async (k, st) => {
+    const blob = await k.generateImage("", { outputFormat: "png" });
+    downloadBlob(blob, `그린_구조_${saveTimestamp()}.png`);
+    flashSaveStatus(st, "저장했습니다.");
+  }));
+
+  saveSvgBtn.addEventListener("click", () => withSaveGuard(async (k, st) => {
+    const blob = await k.generateImage("", { outputFormat: "svg" });
+    downloadBlob(blob, `그린_구조_${saveTimestamp()}.svg`);
+    flashSaveStatus(st, "저장했습니다.");
+  }));
+
+  saveKetBtn.addEventListener("click", () => withSaveGuard(async (k, st) => {
+    const ket = await k.getKet();
+    downloadBlob(new Blob([ket], { type: "application/json" }), `그린_구조_${saveTimestamp()}.ket`);
+    flashSaveStatus(st, "저장했습니다.");
+  }));
 
   let recoveryDone = false;
   async function offerRecovery(k) {
@@ -139,6 +265,7 @@
     if (!saved) return;
     if (window.confirm("이전에 그리던 구조가 있습니다. 복구할까요?\n(취소하면 저장본은 삭제됩니다)")) {
       try { await k.setMolecule(saved); } catch { /* 복구 실패 — 빈 캔버스, 사용자를 막지 않는다 */ }
+      updateSaveButtonsState();   // setMolecule이 change 이벤트를 안 낼 수도 있어 직접 반영
     } else {
       await idbDelete();
     }
@@ -175,6 +302,7 @@
         ui.ketcher = k;
         msg.hidden = true;
         armAutosave(k);
+        updateSaveButtonsState();   // 새 에디터는 보통 빈 캔버스로 시작 — 버튼 비활성화 반영
         resolve(k);
       };
       const fail = (why) => {
@@ -282,6 +410,7 @@
         return;
       }
       await k.setMolecule(molblock);
+      updateSaveButtonsState();   // setMolecule이 change 이벤트를 안 낼 수도 있어 직접 반영
       // setMolecule 은 실패해도 undefined 로 resolve 한다 — 원자 수로 성공을 판정
       const back = await k.getMolfile("v2000").catch(() => "");
       const ok = /V2000/.test(back) && parseSDF(back, "", "").atoms.length > 0;

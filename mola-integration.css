@@ -38,3 +38,56 @@ button.ghost:disabled { opacity: .45; cursor: default; }
 @media (max-width: 680px) {
   .modebar button { padding: 7px 15px; font-size: 12.5px; }
 }
+
+/* ── 주기율표 토글 버튼(눌림 상태) ─────────────────────────────────────
+   기존 button.ghost 를 그대로 쓰되, 열려 있을 때는 modebar 의 aria-pressed
+   패턴처럼 accent 로 채워 "지금 켜져 있다"를 표시한다. */
+.editorwrap .editbar-actions .ghost[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.editorwrap .editbar-actions .ghost[aria-pressed="true"]:hover { background: var(--accent-2); }
+
+/* ── 주기율표 — 패널(상시 오버레이) ────────────────────────────────────
+   프레임 슬롯(에디터 iframe 을 담는 상대 위치 컨테이너) 안에 절대 위치로
+   얹는다 — iframe 폭 자체는 건드리지 않아 캔버스가 좁아지지 않는다.
+   editbar 바로 아래·왼쪽에 뜨도록 top/left 를 작게 두고, iframe 보다 위에
+   그려지도록 z-index 를 준다(DOM 순서상 iframe 이 나중에 붙어도 역전 없게). */
+.periodic-panel { position: absolute; top: 8px; left: 8px; z-index: 5;
+  max-height: calc(100% - 16px); overflow: auto; }
+.periodic-panel[hidden] { display: none; }
+
+/* 패널·팝업 공용 껍데기 — 반투명 금지, 불투명 배경 + 그림자만 */
+.periodic-table { background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r-card); box-shadow: var(--shadow); padding: 8px;
+  font-family: var(--mono); }
+
+.pt-frequent { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 8px;
+  margin-bottom: 8px; border-bottom: 1px solid var(--line); max-width: 456px; }
+.pt-grid { display: grid; grid-template-columns: repeat(18, 22px);
+  grid-auto-rows: 22px; gap: 2px; }
+
+.pt-cell { display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 5px; border: 1px solid transparent;
+  background: var(--panel-2); font-weight: 700; font-size: 10.5px; line-height: 1;
+  cursor: pointer; padding: 0; position: relative; }
+.pt-cell:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.pt-cell.selected { border-color: var(--accent); background: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft); }
+.pt-cell-big { width: 34px; height: 34px; border-radius: 8px; font-size: 14px; }
+.pt-cell.pt-empty { background: transparent; border: 0; cursor: default; }
+.pt-cell.pt-ph { background: transparent; border: 1px dashed var(--line-2);
+  color: var(--faint); font-size: 8.5px; font-weight: 600; cursor: default; }
+.pt-sym { pointer-events: none; }
+.pt-z { position: absolute; top: 1px; right: 2px; font-size: 6px;
+  font-weight: 600; color: var(--faint); pointer-events: none; }
+
+/* ── 주기율표 — 우클릭 팝업 ──────────────────────────────────────────
+   빈 캔버스 우클릭 지점에 뜨는 변형 — 부모 문서(body) 최상단에 붙어
+   iframe 의 overflow:hidden 프레임 경계에 잘리지 않는다. */
+.periodic-popup { position: fixed; z-index: 1000; }
+
+@media (max-width: 680px) {
+  .pt-grid { grid-template-columns: repeat(18, 18px); grid-auto-rows: 18px; }
+  .pt-cell { width: 18px; height: 18px; font-size: 9px; }
+  .pt-cell-big { width: 28px; height: 28px; font-size: 12.5px; }
+}

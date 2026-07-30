@@ -13,6 +13,11 @@
     // 복수형 "images"다(번들 상수 p.u11 → "images", DOM data-testid도 동일하게
     // "images" — main.4a641a67.js 로 실측 확인). "image" 로는 안 숨겨진다.
     "images",
+    // 입체화학 라벨(Enhanced Stereo, R/S·업/다운 플래그) 지정 도구 — 사용자가
+    // 이 도메인(반도체 식각·세정 도면)에는 필요 없다고 확인했다. 쐐기(wedge)
+    // 결합 자체는 이 키와 무관하게 "결합" 그룹 도구에 그대로 남아 계속 쓸 수
+    // 있다 — 숨기는 건 별도의 입체화학 "라벨" 지정 UI뿐이다.
+    "enhanced-stereo",
   ];
   const EDITOR_SRC =
     "assets/editor/index.html?hiddenControls=" + HIDDEN_CONTROLS.join(",");
@@ -51,6 +56,7 @@
     '<div class="editbar">' +
     '  <button id="sendToViewerBtn" class="ghost" type="button">← 뷰어로 보내기</button>' +
     '  <div class="editbar-actions">' +
+    '    <button id="periodicToggleBtn" class="ghost" type="button" aria-pressed="false">주기율표</button>' +
     '    <button id="copyImageBtn" class="ghost" type="button" disabled>📋 그림 복사</button>' +
     '    <button id="savePngBtn" class="ghost" type="button" disabled>PNG 저장</button>' +
     '    <button id="saveSvgBtn" class="ghost" type="button" disabled>SVG 저장</button>' +
@@ -59,6 +65,7 @@
     '  <span class="estatus" id="editorStatus"></span>' +
     "</div>" +
     '<div class="frame-slot" id="editorFrameSlot">' +
+    '  <div class="periodic-panel" id="periodicPanel" hidden></div>' +
     '  <div class="frame-msg" id="editorFrameMsg">에디터를 불러오는 중입니다…</div>' +
     "</div>";
   appEl.appendChild(editorWrap);
@@ -187,6 +194,255 @@
     }, 2500);
   }
 
+  // ── 주기율표 패널 · 우클릭 팝업 ─────────────────────────────────────
+  // Schrödinger Sketcher 의 "우클릭 주기율표"·"패널 주기율표" UX를 이 포크
+  // 수정 없이 부모 페이지만으로 재현한다(조사 문서:
+  // .superpowers/sdd/periodic-table-ux-options.md). 핵심 호출은 단 한 줄 —
+  // k.editor.tool('atom', { label }) — 로, 우측 툴바의 원자 버튼과 Ketcher
+  // 자체 주기율표 모달의 "Add"가 내부적으로 수렴하는 지점과 같다(Editor.ts:333).
+  // Redux 스토어를 거치지 않아 우측 툴바 자체의 "선택됨" 하이라이트는 갱신되지
+  // 않지만(화장품 수준 차이), 실제 동작(다음 클릭에 그 원소가 찍힘)은 정상이다.
+
+  // 자주 쓰는 원소 — 반도체 식각·세정 도면 기준 순서(표준 원자번호 순이 아니다):
+  // Si·Ge(식각/세정 대상 반도체), Ti·Al(박막·배선 금속),
+  // N·O·F·Cl·S·P(플라즈마 식각·세정 가스 계열의 헤테로 원자), C·H(유기 골격).
+  const FREQUENT_ELEMENTS = ["Si", "Ge", "Ti", "Al", "N", "O", "F", "Cl", "S", "P", "C", "H"];
+
+  // 전체 주기율표(18족 표준 배치) — 원자번호 1~118. 란타넘(57~71)·악티넘(89~103)은
+  // IUPAC 관용대로 아래 두 줄로 분리해 표를 컴팩트하게 유지한다. 외부 의존
+  // 없이 이 파일 안에 하드코딩한다. (무결성: 1~118 정확히 한 번씩 등장 — 스크래치
+  // 스크립트로 검증함.)
+  const PT_MAIN = [
+    [["H", 1], null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, ["He", 2]],
+    [["Li", 3], ["Be", 4], null, null, null, null, null, null, null, null, null, null, ["B", 5], ["C", 6], ["N", 7], ["O", 8], ["F", 9], ["Ne", 10]],
+    [["Na", 11], ["Mg", 12], null, null, null, null, null, null, null, null, null, null, ["Al", 13], ["Si", 14], ["P", 15], ["S", 16], ["Cl", 17], ["Ar", 18]],
+    [["K", 19], ["Ca", 20], ["Sc", 21], ["Ti", 22], ["V", 23], ["Cr", 24], ["Mn", 25], ["Fe", 26], ["Co", 27], ["Ni", 28], ["Cu", 29], ["Zn", 30], ["Ga", 31], ["Ge", 32], ["As", 33], ["Se", 34], ["Br", 35], ["Kr", 36]],
+    [["Rb", 37], ["Sr", 38], ["Y", 39], ["Zr", 40], ["Nb", 41], ["Mo", 42], ["Tc", 43], ["Ru", 44], ["Rh", 45], ["Pd", 46], ["Ag", 47], ["Cd", 48], ["In", 49], ["Sn", 50], ["Sb", 51], ["Te", 52], ["I", 53], ["Xe", 54]],
+    [["Cs", 55], ["Ba", 56], { ph: "57–71" }, ["Hf", 72], ["Ta", 73], ["W", 74], ["Re", 75], ["Os", 76], ["Ir", 77], ["Pt", 78], ["Au", 79], ["Hg", 80], ["Tl", 81], ["Pb", 82], ["Bi", 83], ["Po", 84], ["At", 85], ["Rn", 86]],
+    [["Fr", 87], ["Ra", 88], { ph: "89–103" }, ["Rf", 104], ["Db", 105], ["Sg", 106], ["Bh", 107], ["Hs", 108], ["Mt", 109], ["Ds", 110], ["Rg", 111], ["Cn", 112], ["Nh", 113], ["Fl", 114], ["Mc", 115], ["Lv", 116], ["Ts", 117], ["Og", 118]],
+  ];
+  const PT_LANTHANIDES = [["La", 57], ["Ce", 58], ["Pr", 59], ["Nd", 60], ["Pm", 61], ["Sm", 62], ["Eu", 63], ["Gd", 64], ["Tb", 65], ["Dy", 66], ["Ho", 67], ["Er", 68], ["Tm", 69], ["Yb", 70], ["Lu", 71]];
+  const PT_ACTINIDES = [["Ac", 89], ["Th", 90], ["Pa", 91], ["U", 92], ["Np", 93], ["Pu", 94], ["Am", 95], ["Cm", 96], ["Bk", 97], ["Cf", 98], ["Es", 99], ["Fm", 100], ["Md", 101], ["No", 102], ["Lr", 103]];
+
+  // 원소 기호 → 잉크 색. index.html 의 2D/3D 렌더 팔레트(elementColors, 20종)와
+  // 맞춰 패널 색과 실제로 캔버스에 찍힐 원자 색이 일치하게 한다 — 목록에 없는
+  // 원소는 기본 잉크색(--ink)을 쓴다. elementColors 는 index.html 인라인
+  // <script> 의 top-level const라 이 파일(별도 <script src>, 뒤에 로드)에서도
+  // 같은 전역 스크립트 스코프로 그대로 보인다 — state/loadMolecule 등 기존
+  // 참조(파일 상단 주석)와 같은 패턴이라 새로 만든 규칙이 아니다.
+  function elementInkColor(sym) {
+    return elementColors[sym] || "var(--ink)";
+  }
+
+  let currentAtomLabel = null;   // 마지막으로 고른 원소 — 패널·팝업 선택 표시 동기화용
+
+  function ptCellButton(sym, z, big) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = big ? "pt-cell pt-cell-big" : "pt-cell";
+    b.dataset.ptEl = sym;
+    b.style.color = elementInkColor(sym);
+    b.title = z ? `${sym} (원자번호 ${z})` : sym;
+    const symEl = document.createElement("span");
+    symEl.className = "pt-sym";
+    symEl.textContent = sym;
+    b.appendChild(symEl);
+    if (!big && z) {
+      const zEl = document.createElement("sup");
+      zEl.className = "pt-z";
+      zEl.textContent = String(z);
+      b.appendChild(zEl);
+    }
+    b.addEventListener("click", () => selectElement(sym));
+    return b;
+  }
+
+  function ptPlaceholder(label) {
+    const d = document.createElement("div");
+    d.className = "pt-cell pt-ph";
+    d.textContent = label;
+    return d;
+  }
+
+  function frequentElementZ(sym) {
+    for (const row of PT_MAIN) {
+      for (const cell of row) {
+        if (Array.isArray(cell) && cell[0] === sym) return cell[1];
+      }
+    }
+    return null;
+  }
+
+  // 패널·팝업 둘 다 이 함수로 만든다 — 마크업을 한 곳에서만 관리한다.
+  function buildPeriodicTable() {
+    const root = document.createElement("div");
+    root.className = "periodic-table";
+
+    const freq = document.createElement("div");
+    freq.className = "pt-frequent";
+    FREQUENT_ELEMENTS.forEach((sym) => {
+      freq.appendChild(ptCellButton(sym, frequentElementZ(sym), true));
+    });
+    root.appendChild(freq);
+
+    const grid = document.createElement("div");
+    grid.className = "pt-grid";
+    PT_MAIN.forEach((row, r) => {
+      row.forEach((cell, c) => {
+        let el;
+        if (!cell) {
+          el = document.createElement("div");
+          el.className = "pt-cell pt-empty";
+        } else if (cell.ph) {
+          el = ptPlaceholder(cell.ph);
+        } else {
+          el = ptCellButton(cell[0], cell[1], false);
+        }
+        el.style.gridRow = String(r + 1);
+        el.style.gridColumn = String(c + 1);
+        grid.appendChild(el);
+      });
+    });
+    // 란타넘·악티넘 — 8행은 빈 여백, 9·10행에 3열부터 배치(위 표의 자리 표시와 정렬)
+    [PT_LANTHANIDES, PT_ACTINIDES].forEach((series, i) => {
+      series.forEach(([sym, z], c) => {
+        const el = ptCellButton(sym, z, false);
+        el.style.gridRow = String(9 + i);
+        el.style.gridColumn = String(3 + c);
+        grid.appendChild(el);
+      });
+    });
+    root.appendChild(grid);
+    return root;
+  }
+
+  function syncPeriodicSelection() {
+    document.querySelectorAll("[data-pt-el]").forEach((el) => {
+      el.classList.toggle("selected", el.dataset.ptEl === currentAtomLabel);
+    });
+  }
+
+  function selectElement(sym) {
+    const st = document.getElementById("editorStatus");
+    const k = ui.ketcher;
+    if (!k) { st.textContent = "에디터가 아직 준비되지 않았습니다."; return; }
+    try {
+      k.editor.tool("atom", { label: sym });
+    } catch (e) {
+      st.textContent = "원소를 선택하지 못했습니다: " + (e && e.message ? e.message : e);
+      return;
+    }
+    currentAtomLabel = sym;
+    syncPeriodicSelection();
+    flashSaveStatus(st, `이제 클릭하면 ${sym} 원자가 찍힙니다.`);
+    closePeriodicPopup();
+  }
+
+  // ── 패널(상시 오버레이) ───────────────────────────────────────────
+  const periodicPanel = document.getElementById("periodicPanel");
+  const periodicToggleBtn = document.getElementById("periodicToggleBtn");
+  let periodicOpen = false;   // 세션(이 페이지가 떠 있는 동안) 유지 — 새로고침 시 초기화된다
+
+  function setPeriodicOpen(open) {
+    periodicOpen = open;
+    periodicPanel.hidden = !open;
+    periodicToggleBtn.setAttribute("aria-pressed", String(open));
+  }
+
+  periodicToggleBtn.addEventListener("click", () => setPeriodicOpen(!periodicOpen));
+  periodicPanel.appendChild(buildPeriodicTable());
+
+  // ── 우클릭 팝업 ───────────────────────────────────────────────────
+  let popupEl = null;
+
+  function closePeriodicPopup() {
+    if (!popupEl) return;
+    popupEl.remove();
+    popupEl = null;
+  }
+
+  function isInsidePopup(target) {
+    return !!(popupEl && target && popupEl.contains(target));
+  }
+
+  function openPeriodicPopupAt(parentX, parentY) {
+    closePeriodicPopup();
+    const popup = document.createElement("div");
+    popup.className = "periodic-table periodic-popup";
+    popup.appendChild(buildPeriodicTable());
+    document.body.appendChild(popup);
+    // 화면 밖으로 안 나가게 보정 — 먼저 붙여서 실제 크기를 잰다.
+    const pw = popup.offsetWidth;
+    const ph = popup.offsetHeight;
+    const maxX = window.innerWidth - pw - 6;
+    const maxY = window.innerHeight - ph - 6;
+    popup.style.left = Math.max(6, Math.min(parentX, maxX)) + "px";
+    popup.style.top = Math.max(6, Math.min(parentY, maxY)) + "px";
+    popupEl = popup;
+    syncPeriodicSelection();
+  }
+
+  // Esc·바깥 클릭으로 닫기 — 팝업은 부모 문서에 살지만 우클릭은 iframe(에디터)
+  // 안에서 일어나므로, 부모 document 리스너는 여기(패널·에디바 등 부모 쪽
+  // 바깥 클릭)만 담당하고 iframe 쪽은 setupCanvasContextMenu 안에서 별도로 잡는다
+  // (iframe 안 클릭은 부모 document 로 버블링되지 않는다 — 별도 document다).
+  document.addEventListener("mousedown", (e) => {
+    if (popupEl && !isInsidePopup(e.target)) closePeriodicPopup();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closePeriodicPopup();
+  });
+
+  // ── 에디터 iframe 안 빈 캔버스 우클릭 ────────────────────────────
+  // editor.findItem(event, null) 로 "커서 아래 가장 가까운 항목"을 판정한다
+  // (ContextMenuTrigger.tsx:122 와 동일한 호출). null(빈 캔버스)일 때만 우리
+  // 팝업을 띄우고, 원자·결합 등 항목이 있으면 아무 것도 하지 않아 Ketcher
+  // 자체 컨텍스트 메뉴가 그대로 뜨게 둔다 — 절대 가로채지 않는다.
+  //
+  // MOLA 의 우클릭 드래그 팬(rightButtonPan.ts)은 3px 이상 이동한 뒤의 다음
+  // contextmenu 를 clientArea 캡처 단계에서 preventDefault + stopPropagation 으로
+  // 삼킨다. **실측 확인(중요, 브리프의 "실제로 테스트" 요구사항)**: stopPropagation
+  // 은 캡처 단계에서 호출돼도 이후 target/버블 단계 전체를 끊는다 — Playwright로
+  // "우드래그 팬 → 바로 우클릭"을 재현하고, 이 리스너 등록 직후에 같은
+  // document 노드에 진단용 리스너를 하나 더 붙여봤더니 팬 케이스에서는 그
+  // 진단 리스너조차 단 한 번도 호출되지 않았다(구현 보고서 항목 5 참고) —
+  // 즉 이 리스너가 실제로 불리는 시점에는 이미 "팬 직후가 아님"이 보장된다.
+  //
+  // event.defaultPrevented 를 팬 판별에 그대로 못 쓰는 이유도 같은 실측에서
+  // 나왔다: Ketcher 자신의 ContextMenuTrigger(:86)가 빈 캔버스를 포함한 "모든"
+  // 정상 우클릭에서 무조건 preventDefault 를 먼저 부르므로, 이 리스너가 정상
+  // 도달한 경우(=팬 아님)에도 defaultPrevented 는 이미 true 다 — 이 값을
+  // 그대로 게이트로 쓰면 빈 캔버스 우클릭 자체가 항상 막혀 버린다. 그래서
+  // "빈 캔버스인가"는 오직 findItem() 으로만 판정한다.
+  function setupCanvasContextMenu(frame, k) {
+    let doc;
+    try {
+      doc = frame.contentWindow.document;
+    } catch {
+      return;   // 접근 불가 — 우클릭 팝업 없이 진행(패널·모달 주기율표는 여전히 동작)
+    }
+    doc.addEventListener("contextmenu", (e) => {
+      let item;
+      try {
+        item = k.editor.findItem(e, null);
+      } catch {
+        return;
+      }
+      if (item) return;   // 원자/결합 등 위 — Ketcher 자체 메뉴에 맡긴다(가로채지 않음)
+      e.preventDefault();
+      const rect = frame.getBoundingClientRect();
+      openPeriodicPopupAt(rect.left + e.clientX, rect.top + e.clientY);
+    });
+    // iframe 안에서도 클릭/Esc 로 팝업이 닫히게 — 부모 document 리스너는
+    // iframe 내부 이벤트를 보지 못한다(별도 document).
+    doc.addEventListener("mousedown", (e) => {
+      if (popupEl && !isInsidePopup(e.target)) closePeriodicPopup();
+    });
+    doc.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closePeriodicPopup();
+    });
+  }
+
   // 네 버튼 공통 골격: 준비 확인 → 빈 캔버스 가드 → 개별 동작(fn) → 에러 표면화.
   // fn 안에서 던지는 에러(예: Task 1의 "내보낼 구조가 없습니다")도 여기서 잡는다 —
   // updateSaveButtonsState()의 isBlank() 판정과 실제 클릭 시점 사이에 경합이
@@ -303,6 +559,7 @@
         msg.hidden = true;
         armAutosave(k);
         updateSaveButtonsState();   // 새 에디터는 보통 빈 캔버스로 시작 — 버튼 비활성화 반영
+        setupCanvasContextMenu(frame, k);   // 빈 캔버스 우클릭 → 주기율표 팝업
         resolve(k);
       };
       const fail = (why) => {

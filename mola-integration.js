@@ -132,10 +132,13 @@
   function armAutosave(k) {
     // change 이벤트는 업스트림이 '취약'하다고 표시한 레거시 경로다 — 실패해도 조용히 넘어간다
     try {
-      k.editor.subscribe("change", () => {
+      k.editor.subscribe("change", (changeData) => {
         // 저장 버튼 활성 상태는 디바운스 없이 즉시 반영 — 자동 임시저장(1.5초 뒤)과는
         // 별개 관심사라 같은 타이머를 공유하지 않는다.
         updateSaveButtonsState();
+        // 스페이스바 "마지막 분자 선택" 기능(아래 주기율표 섹션)이 쓸 최근 조작
+        // 원자 추적 — 같은 change 구독을 재사용한다(새 구독을 늘리지 않음).
+        trackLastTouchedAtom(k, changeData);
         clearTimeout(autosaveTimer);
         autosaveTimer = setTimeout(async () => {
           try { await idbSet(await k.getKet()); } catch { /* 조용히 */ }
@@ -203,6 +206,49 @@
   // Redux 스토어를 거치지 않아 우측 툴바 자체의 "선택됨" 하이라이트는 갱신되지
   // 않지만(화장품 수준 차이), 실제 동작(다음 클릭에 그 원소가 찍힘)은 정상이다.
 
+  // ── Telex 폰트 런타임 주입 ────────────────────────────────────────
+  // 패널의 원소 기호를 캔버스에 실제로 찍히는 서체(Telex)로 그리기 위함이다.
+  // 문제: 에디터 번들 안 폰트 파일명에 콘텐츠 해시가 붙어 있어(예:
+  // static/media/Telex-Regular.5a3d2f1142eb13f7703d.woff2) 빌드마다 이름이
+  // 바뀐다 — 하드코딩하면 다음 build-editor 실행 때 깨진다. asset-manifest.json
+  // 을 fetch 해 "static/media/Telex-Regular.woff2" 키의 실제(해시 포함) 경로를
+  // 읽어온 뒤 그 URL로 @font-face 를 FontFace API로 런타임에 등록한다(실제로
+  // manifest 에 이 키가 있고 폰트가 들어있음을 사전에 확인함 — asset-manifest.json,
+  // main.909252be.css 의 `@font-face{font-family:Telex;...}` 선언과 교차 확인).
+  // 실패(오프라인, 매니페스트 구조 변경, FontFace 로드 실패 등)는 전부 조용히
+  // 삼킨다 — 이 경우 CSS의 html.pt-telex-loaded 셀렉터가 안 붙어 기존 --mono
+  // 서체로 폴백할 뿐, 패널 자체는 절대 깨지지 않는다.
+  const TELEX_MANIFEST_KEY = "static/media/Telex-Regular.woff2";
+  let telexInjectPromise = null;
+  function injectTelexFont() {
+    if (telexInjectPromise) return telexInjectPromise;
+    telexInjectPromise = (async () => {
+      try {
+        const res = await fetch("assets/editor/asset-manifest.json");
+        if (!res.ok) throw new Error("asset-manifest.json fetch 실패: " + res.status);
+        const manifest = await res.json();
+        const rel = manifest && manifest.files && manifest.files[TELEX_MANIFEST_KEY];
+        if (!rel) throw new Error("manifest 에 Telex 항목 없음");
+        // rel 은 "./static/media/Telex-<hash>.woff2" 형태 — assets/editor/ 기준 상대경로.
+        const url = new URL(
+          rel.replace(/^\.\//, ""),
+          new URL("assets/editor/", document.baseURI),
+        ).href;
+        const face = new FontFace("Telex", `url("${url}") format("woff2")`, {
+          weight: "400",
+          style: "normal",
+        });
+        await face.load();
+        document.fonts.add(face);
+        document.documentElement.classList.add("pt-telex-loaded");
+      } catch {
+        // 조용히 폴백 — 위 주석 참고.
+      }
+    })();
+    return telexInjectPromise;
+  }
+  injectTelexFont();
+
   // 자주 쓰는 원소 — 반도체 식각·세정 도면 기준 순서(표준 원자번호 순이 아니다):
   // Si·Ge(식각/세정 대상 반도체), Ti·Al(박막·배선 금속),
   // N·O·F·Cl·S·P(플라즈마 식각·세정 가스 계열의 헤테로 원자), C·H(유기 골격).
@@ -225,13 +271,20 @@
   const PT_ACTINIDES = [["Ac", 89], ["Th", 90], ["Pa", 91], ["U", 92], ["Np", 93], ["Pu", 94], ["Am", 95], ["Cm", 96], ["Bk", 97], ["Cf", 98], ["Es", 99], ["Fm", 100], ["Md", 101], ["No", 102], ["Lr", 103]];
 
   // 원소 기호 → 잉크 색. index.html 의 2D/3D 렌더 팔레트(elementColors, 20종)와
-  // 맞춰 패널 색과 실제로 캔버스에 찍힐 원자 색이 일치하게 한다 — 목록에 없는
-  // 원소는 기본 잉크색(--ink)을 쓴다. elementColors 는 index.html 인라인
-  // <script> 의 top-level const라 이 파일(별도 <script src>, 뒤에 로드)에서도
-  // 같은 전역 스크립트 스코프로 그대로 보인다 — state/loadMolecule 등 기존
-  // 참조(파일 상단 주석)와 같은 패턴이라 새로 만든 규칙이 아니다.
+  // 맞춰 패널 색과 실제로 캔버스에 찍힐 원자 색이 일치하게 한다 — elementColors
+  // 는 index.html 인라인 <script> 의 top-level const라 이 파일(별도 <script src>,
+  // 뒤에 로드)에서도 같은 전역 스크립트 스코프로 그대로 보인다 — state/loadMolecule
+  // 등 기존 참조(파일 상단 주석)와 같은 패턴이라 새로 만든 규칙이 아니다.
+  //
+  // 목록에 없는(20종 밖) 원소의 기본색은 예전엔 var(--ink) 였다 — 패널이
+  // var(--panel) 등 테마 토큰을 쓰던 시절엔 배경도 같이 어두워져 괜찮았지만,
+  // 지금은 패널 배경을 항상 흰색으로 고정했으므로(위 CSS 주석 참고)
+  // var(--ink) 를 그대로 쓰면 다크모드에서 --ink 가 밝은 색(#eef3f9)이 되어
+  // 흰 배경 위에 거의 안 보이는 대비 사고가 난다(실제로 다크모드 스크린샷에서
+  // 발견함). 그래서 기본색도 라이트 테마 --ink 값을 그대로 리터럴로 고정한다.
+  const PT_DEFAULT_INK = "#14202e";
   function elementInkColor(sym) {
-    return elementColors[sym] || "var(--ink)";
+    return elementColors[sym] || PT_DEFAULT_INK;
   }
 
   let currentAtomLabel = null;   // 마지막으로 고른 원소 — 패널·팝업 선택 표시 동기화용
@@ -274,9 +327,33 @@
   }
 
   // 패널·팝업 둘 다 이 함수로 만든다 — 마크업을 한 곳에서만 관리한다.
-  function buildPeriodicTable() {
+  // opts.withHeader: true면 드래그 손잡이 + 제목 + 접기 버튼을 가진 헤더를
+  // 붙인다(상시 패널 전용 — 팝업은 임시로 뜨는 것이라 드래그 대상이 아니다).
+  // opts.compact: 헤더의 접기 버튼 초기 라벨/상태.
+  function buildPeriodicTable(opts) {
+    opts = opts || {};
     const root = document.createElement("div");
-    root.className = "periodic-table";
+    root.className = "periodic-table" + (opts.compact ? " pt-compact" : "");
+
+    if (opts.withHeader) {
+      const header = document.createElement("div");
+      header.className = "pt-header";
+      const grip = document.createElement("span");
+      grip.className = "pt-grip";
+      grip.setAttribute("aria-hidden", "true");
+      grip.textContent = "⠿⠿";
+      const title = document.createElement("span");
+      title.className = "pt-title";
+      title.textContent = "주기율표 (드래그해서 옮기기)";
+      const collapseBtn = document.createElement("button");
+      collapseBtn.type = "button";
+      collapseBtn.className = "pt-collapse-btn";
+      collapseBtn.dataset.ptCollapse = "1";
+      collapseBtn.textContent = opts.compact ? "펼치기" : "접기";
+      header.append(grip, title, collapseBtn);
+      root.appendChild(header);
+      root.dataset.ptHeader = "1";
+    }
 
     const freq = document.createElement("div");
     freq.className = "pt-frequent";
@@ -341,16 +418,129 @@
   // ── 패널(상시 오버레이) ───────────────────────────────────────────
   const periodicPanel = document.getElementById("periodicPanel");
   const periodicToggleBtn = document.getElementById("periodicToggleBtn");
-  let periodicOpen = false;   // 세션(이 페이지가 떠 있는 동안) 유지 — 새로고침 시 초기화된다
+  let periodicOpen = false;      // 세션(이 페이지가 떠 있는 동안) 유지 — 새로고침 시 초기화된다
+  let periodicCompact = false;   // 접기 모드 — 전체 18족 표를 숨기고 자주 쓰는 줄만 남김
+  let periodicPos = null;        // {top,left}(px, #editorFrameSlot 기준) — 드래그로 옮긴 뒤에만 값이 생김
+
+  // 위치·접기 상태를 sessionStorage 에 남긴다 — "세션 동안 기억(다시 열면 그
+  // 자리)" 요청 그대로: 탭을 닫으면 사라지고(sessionStorage 의 기본 동작),
+  // 같은 탭에서는 새로고침해도 유지된다. 실패(프라이빗 모드 등)는 조용히 무시 —
+  // 이 상태는 UX 편의일 뿐 기능 정합성에 영향이 없다.
+  const PT_STATE_KEY = "molaPeriodicPanelState";
+  function loadPeriodicState() {
+    try {
+      const raw = sessionStorage.getItem(PT_STATE_KEY);
+      if (!raw) return;
+      const st = JSON.parse(raw);
+      if (typeof st.compact === "boolean") periodicCompact = st.compact;
+      if (st.pos && typeof st.pos.top === "number" && typeof st.pos.left === "number") {
+        periodicPos = st.pos;
+      }
+    } catch { /* 손상된 값 — 기본값으로 진행 */ }
+  }
+  function savePeriodicState() {
+    try {
+      sessionStorage.setItem(PT_STATE_KEY, JSON.stringify({ compact: periodicCompact, pos: periodicPos }));
+    } catch { /* 조용히 무시 */ }
+  }
+  loadPeriodicState();
 
   function setPeriodicOpen(open) {
     periodicOpen = open;
     periodicPanel.hidden = !open;
     periodicToggleBtn.setAttribute("aria-pressed", String(open));
+    // 저장된 위치는 패널이 실제로 보이게 된 "지금" 다시 적용한다 — 숨겨진 동안
+    // (또는 애초에 뷰어 모드라 editorwrap 전체가 display:none인 동안)에는
+    // #editorFrameSlot/패널의 offsetWidth·clientHeight 가 0이라 클램프 계산이
+    // 부정확해진다(아래 clampPeriodicPosition 참고).
+    if (open && periodicPos) positionPeriodicPanel(periodicPos.top, periodicPos.left);
   }
 
   periodicToggleBtn.addEventListener("click", () => setPeriodicOpen(!periodicOpen));
-  periodicPanel.appendChild(buildPeriodicTable());
+
+  const periodicPanelRoot = buildPeriodicTable({ withHeader: true, compact: periodicCompact });
+  periodicPanel.appendChild(periodicPanelRoot);
+  const periodicCollapseBtn = periodicPanelRoot.querySelector("[data-pt-collapse]");
+  const periodicHeaderEl = periodicPanelRoot.querySelector(".pt-header");
+
+  function setPeriodicCompact(compact) {
+    periodicCompact = compact;
+    periodicPanelRoot.classList.toggle("pt-compact", compact);
+    if (periodicCollapseBtn) periodicCollapseBtn.textContent = compact ? "펼치기" : "접기";
+    savePeriodicState();
+  }
+  if (periodicCollapseBtn) {
+    periodicCollapseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();   // 헤더의 드래그 시작(pointerdown)까지 번지지 않게
+      setPeriodicCompact(!periodicCompact);
+    });
+  }
+
+  // ── 패널 드래그 이동 ──────────────────────────────────────────────
+  // 위치 기준은 #editorFrameSlot(패널의 position:absolute 컨테이닝 블록) —
+  // "화면 밖으로 못 나가게"를 프레임 슬롯(에디터가 실제로 보이는 영역) 기준으로
+  // 해석한다. 기본값(top:52px/right:62px, CSS)은 4개 툴바를 하나도 안 가리도록
+  // 실측(measure2.mjs 스타일 Playwright 측정, 아래 CSS 주석 참고)해 고른 값이고,
+  // 드래그로 옮기면 이 함수들이 top/left 인라인 px 로 완전히 대체한다.
+  function clampPeriodicPosition(top, left) {
+    const slot = document.getElementById("editorFrameSlot");
+    const w = periodicPanel.offsetWidth || 260;
+    const h = periodicPanel.offsetHeight || 160;
+    const maxLeft = Math.max(0, slot.clientWidth - w);
+    const maxTop = Math.max(0, slot.clientHeight - h);
+    return { top: Math.min(Math.max(0, top), maxTop), left: Math.min(Math.max(0, left), maxLeft) };
+  }
+  function positionPeriodicPanel(top, left) {
+    const clamped = clampPeriodicPosition(top, left);
+    periodicPos = clamped;
+    periodicPanel.style.left = clamped.left + "px";
+    periodicPanel.style.top = clamped.top + "px";
+    periodicPanel.style.right = "auto";
+    const slot = document.getElementById("editorFrameSlot");
+    // max-height 도 새 top 기준으로 다시 계산 — 안 그러면 아래로 드래그했을 때
+    // CSS 기본값(top 52px 기준 calc)이 그대로 남아 패널이 슬롯 아래로 넘칠 수 있다.
+    periodicPanel.style.maxHeight = Math.max(120, slot.clientHeight - clamped.top - 8) + "px";
+  }
+  // 저장된 위치의 실제 적용은 setPeriodicOpen(true) 시점으로 미룬다(위 함수
+  // 참고) — 지금(모듈 초기화 시점)은 대개 뷰어 모드라 editorwrap 전체가
+  // display:none 이어서 여기서 클램프하면 크기를 0으로 잘못 재게 된다.
+
+  let dragState = null;
+  function onPanelDragMove(e) {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    positionPeriodicPanel(dragState.startTop + dy, dragState.startLeft + dx);
+  }
+  function onPanelDragEnd() {
+    window.removeEventListener("pointermove", onPanelDragMove);
+    dragState = null;
+    savePeriodicState();
+  }
+  if (periodicHeaderEl) {
+    periodicHeaderEl.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("[data-pt-collapse]")) return;   // 접기 버튼 클릭은 드래그 아님
+      const slot = document.getElementById("editorFrameSlot");
+      const slotRect = slot.getBoundingClientRect();
+      const panelRect = periodicPanel.getBoundingClientRect();
+      dragState = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startTop: panelRect.top - slotRect.top,
+        startLeft: panelRect.left - slotRect.left,
+      };
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 구형 브라우저 폴백 없이 진행 */ }
+      window.addEventListener("pointermove", onPanelDragMove);
+      window.addEventListener("pointerup", onPanelDragEnd, { once: true });
+      e.preventDefault();
+    });
+  }
+  // 창 크기가 바뀌어도(예: 브라우저 리사이즈) 저장된 위치를 다시 클램프해
+  // 슬롯 밖으로 나가지 않게 한다.
+  window.addEventListener("resize", () => {
+    if (periodicOpen && periodicPos) positionPeriodicPanel(periodicPos.top, periodicPos.left);
+  });
 
   // ── 우클릭 팝업 ───────────────────────────────────────────────────
   let popupEl = null;
@@ -369,7 +559,7 @@
     closePeriodicPopup();
     const popup = document.createElement("div");
     popup.className = "periodic-table periodic-popup";
-    popup.appendChild(buildPeriodicTable());
+    popup.appendChild(buildPeriodicTable({ withHeader: false }));
     document.body.appendChild(popup);
     // 화면 밖으로 안 나가게 보정 — 먼저 붙여서 실제 크기를 잰다.
     const pw = popup.offsetWidth;
@@ -382,16 +572,134 @@
     syncPeriodicSelection();
   }
 
-  // Esc·바깥 클릭으로 닫기 — 팝업은 부모 문서에 살지만 우클릭은 iframe(에디터)
-  // 안에서 일어나므로, 부모 document 리스너는 여기(패널·에디바 등 부모 쪽
-  // 바깥 클릭)만 담당하고 iframe 쪽은 setupCanvasContextMenu 안에서 별도로 잡는다
-  // (iframe 안 클릭은 부모 document 로 버블링되지 않는다 — 별도 document다).
+  // ── Esc — 팝업·패널 둘 다 닫는다 ─────────────────────────────────
+  // 팝업은 부모 문서에 살지만 우클릭은 iframe(에디터) 안에서 일어나므로, 이
+  // 핸들러를 부모 document 와 iframe document 양쪽에 모두 건다(setupCanvasContextMenu
+  // 안에서 재사용). 절대 preventDefault/stopPropagation 을 부르지 않는다 — 우리
+  // 것(팝업·패널)이 열려 있지 않으면 그냥 아무 것도 안 하고 리턴해 이벤트가
+  // 그대로 흘러가게 둔다. 이렇게 하면 Ketcher 자신의 Esc 사용(모달 닫기 —
+  // Dialog.tsx:156, 도구 취소 — hotkeys.ts:195/288, ContextMenu.tsx:45 등)을
+  // 전혀 방해하지 않는다 — 같은 document 에 여러 keydown 리스너가 있어도
+  // stopPropagation/stopImmediatePropagation 을 안 부르면 전부 그대로 호출된다.
+  function handleGlobalEscape(e) {
+    if (e.key !== "Escape") return;
+    if (popupEl) { closePeriodicPopup(); return; }
+    if (periodicOpen) { setPeriodicOpen(false); }
+  }
   document.addEventListener("mousedown", (e) => {
     if (popupEl && !isInsidePopup(e.target)) closePeriodicPopup();
   });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closePeriodicPopup();
-  });
+  document.addEventListener("keydown", handleGlobalEscape);
+
+  // ── 스페이스바 — 마지막에 만진 분자(fragment) 선택 ──────────────
+  // ChemDraw 식 "스페이스로 마지막 대상 선택". 충돌 확인 결과(ketcher/packages/
+  // ketcher-core/src/application/editor/modes/SequenceMode.ts:1336): Ketcher는
+  // 매크로분자 에디터의 "시퀀스" 보기에서만 Space를 이미 쓴다
+  // ('break-editting-chain' — 현재 편집 중인 사슬의 다음 노드로의 결합을 끊음).
+  // 소분자(micromolecule) 캔버스 쪽 hotkeys(ketcher-react/src/script/ui/state/
+  // hotkeys.ts, action/*.ts 전체)에는 Space 바인딩이 전혀 없다 — 이 앱은
+  // 반도체 도면용 소분자 편집이 기본이라 실사용 경로에서는 충돌이 없다. 다만
+  // 사용자가 상단 툴바의 매크로분자/폴리머 모드로 전환해 시퀀스를 편집 중이면
+  // 이론상 겹칠 수 있어, isPolymerEditorActive()로 그 상태를 감지해 그 경우엔
+  // 아예 우리 쪽에서 손대지 않는다(Ketcher 자체 동작을 그대로 둔다).
+  function isPolymerEditorActive() {
+    try {
+      return !!(ui.frame && ui.frame.contentWindow && ui.frame.contentWindow.isPolymerEditorTurnedOn);
+    } catch {
+      return false;
+    }
+  }
+  // 텍스트 입력(원자 라벨 편집, 검색창, contenteditable) 은 물론, 포커스된
+  // 버튼/링크 등 "스페이스 = 활성화"가 브라우저 기본 동작인 요소도 반드시
+  // 통과시켜야 한다 — 안 그러면 예를 들어 우리 패널 접기 버튼에 Tab 으로
+  // 포커스를 옮긴 뒤 Space 를 누르는 정상적인 키보드 조작까지 우리가 먼저
+  // preventDefault 해버려 버튼이 눌리지 않는 회귀가 생긴다.
+  //
+  // 중요한 함정 하나(실측으로 발견): Ketcher 에디터 캔버스는 복사/붙여넣기를
+  // 가로채기 위해 숨겨진 <textarea data-cliparea> 를 캔버스 위에 상시
+  // autoFocus 시켜 둔다(cliparea.tsx) — 즉 사용자가 캔버스에서 그림을 그리는
+  // "정상적인" 상태에서도 document.activeElement/event.target 은 거의 항상
+  // 이 TEXTAREA다. 이걸 "텍스트 입력 중"으로 오판하면 스페이스바가 캔버스
+  // 위에서 사실상 영원히 동작하지 않는 회귀가 생긴다(실제로 겪음). Ketcher
+  // 자신도 정확히 같은 이유로 이 요소를 예외 처리한다 — ketcher-core의
+  // isEditableInputTarget()(utilities/dom.ts:7-17, hotkeys.ts의 shouldIgnoreKeyEvent
+  // 가 그대로 씀)가 data-cliparea 속성을 먼저 걸러낸다. 여기서도 같은 패턴을
+  // 그대로 따른다.
+  function isKeyboardActivatableTarget(target) {
+    if (!target) return false;
+    if (target.hasAttribute && target.hasAttribute("data-cliparea")) return false;
+    const tag = target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON" || tag === "A") {
+      return true;
+    }
+    if (target.isContentEditable) return true;
+    if (target.closest && target.closest("button, a, [role='button'], [contenteditable='true']")) {
+      return true;
+    }
+    return false;
+  }
+
+  let lastTouchedAtomId = null;   // editor.subscribe('change', ...) 가 갱신 — armAutosave 참고
+
+  // change 이벤트의 ChangeEventData[] 에서 "지금 struct 에 실제로 존재하는"
+  // 원자/결합 id 를 하나 골라 원자 id 로 환원한다. OperationType enum 문자열에
+  // 의존하지 않는 이유: 부모(순수 JS)에서 ketcher-core 의 enum을 import할 방법이
+  // 없다 — 대신 "struct.atoms/bonds 에 그 id 가 실제로 있는가"로 판별한다.
+  // 이 방식은 *_DELETE 계열 operation을 자연히 걸러낸다(지워진 id는 이미 struct
+  // 에 없으므로 has() 가 false). data 배열은 customOnChangeHandler.ts 가 원본
+  // operations를 reverse() 해 순회하며 push 하므로 data[0]이 가장 최근 operation —
+  // 그래서 배열을 앞에서부터 훑어 처음 걸리는 것을 쓴다.
+  function trackLastTouchedAtom(k, changeData) {
+    if (!Array.isArray(changeData) || !changeData.length) return;
+    let struct;
+    try { struct = k.editor.struct(); } catch { return; }
+    if (!struct || !struct.atoms || !struct.bonds) return;
+    for (const d of changeData) {
+      if (!d || d.id == null) continue;
+      if (struct.atoms.has(d.id)) { lastTouchedAtomId = d.id; return; }
+      if (struct.bonds.has(d.id)) {
+        const bond = struct.bonds.get(d.id);
+        if (bond && bond.begin != null && struct.atoms.has(bond.begin)) {
+          lastTouchedAtomId = bond.begin;
+          return;
+        }
+      }
+    }
+  }
+
+  function selectLastTouchedFragment() {
+    const k = ui.ketcher;
+    if (!k || lastTouchedAtomId == null) return;   // 만진 것 없음(막 로드/빈 캔버스) — 조용히 넘어간다
+    let struct;
+    try { struct = k.editor.struct(); } catch { return; }
+    const atom = struct.atoms.get(lastTouchedAtomId);
+    if (!atom) { lastTouchedAtomId = null; return; }   // 그 사이 지워짐 — 조용히 포기
+    let atomSet;
+    try { atomSet = struct.getFragmentIds(atom.fragment); } catch { return; }
+    if (!atomSet || !atomSet.size) return;
+    const atoms = Array.from(atomSet);
+    const bonds = [];
+    struct.bonds.forEach((bond, bid) => {
+      if (atomSet.has(bond.begin) && atomSet.has(bond.end)) bonds.push(bid);
+    });
+    try {
+      k.editor.selection({ atoms, bonds });
+    } catch {
+      return;
+    }
+    const st = document.getElementById("editorStatus");
+    if (st) flashSaveStatus(st, "마지막 분자를 선택했습니다.");
+  }
+
+  function handleGlobalSpacebar(e) {
+    if (e.code !== "Space" && e.key !== " ") return;
+    if (isKeyboardActivatableTarget(e.target)) return;
+    if (ui.mode !== "editor") return;
+    if (isPolymerEditorActive()) return;   // 위 주석 — 매크로분자 시퀀스 모드의 자체 Space 와 충돌 회피
+    e.preventDefault();   // 처리하는 경우에만 막는다 — 부모 문서에서 Space 의 기본 동작(스크롤)을 억제
+    selectLastTouchedFragment();
+  }
+  document.addEventListener("keydown", handleGlobalSpacebar);
 
   // ── 에디터 iframe 안 빈 캔버스 우클릭 ────────────────────────────
   // editor.findItem(event, null) 로 "커서 아래 가장 가까운 항목"을 판정한다
@@ -433,14 +741,16 @@
       const rect = frame.getBoundingClientRect();
       openPeriodicPopupAt(rect.left + e.clientX, rect.top + e.clientY);
     });
-    // iframe 안에서도 클릭/Esc 로 팝업이 닫히게 — 부모 document 리스너는
-    // iframe 내부 이벤트를 보지 못한다(별도 document).
+    // iframe 안에서도 클릭/Esc/Space 로 반응하게 — 부모 document 리스너는
+    // iframe 내부 이벤트를 보지 못한다(별도 document). 실제 캔버스 조작(우클릭,
+    // 원자 클릭, 스페이스바)은 거의 항상 iframe 안에서 일어나므로 이 등록이
+    // 핵심 경로다 — 부모 document 쪽 리스너는 우리 자신의 패널·버튼 등
+    // 부모 쪽 UI 위에서 일어나는 경우를 위한 보조 경로.
     doc.addEventListener("mousedown", (e) => {
       if (popupEl && !isInsidePopup(e.target)) closePeriodicPopup();
     });
-    doc.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closePeriodicPopup();
-    });
+    doc.addEventListener("keydown", handleGlobalEscape);
+    doc.addEventListener("keydown", handleGlobalSpacebar);
   }
 
   // 네 버튼 공통 골격: 준비 확인 → 빈 캔버스 가드 → 개별 동작(fn) → 에러 표면화.

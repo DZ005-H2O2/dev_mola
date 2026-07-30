@@ -50,36 +50,87 @@ button.ghost:disabled { opacity: .45; cursor: default; }
 /* ── 주기율표 — 패널(상시 오버레이) ────────────────────────────────────
    프레임 슬롯(에디터 iframe 을 담는 상대 위치 컨테이너) 안에 절대 위치로
    얹는다 — iframe 폭 자체는 건드리지 않아 캔버스가 좁아지지 않는다.
-   editbar 바로 아래·왼쪽에 뜨도록 top/left 를 작게 두고, iframe 보다 위에
-   그려지도록 z-index 를 준다(DOM 순서상 iframe 이 나중에 붙어도 역전 없게). */
-.periodic-panel { position: absolute; top: 8px; left: 8px; z-index: 5;
-  max-height: calc(100% - 16px); overflow: auto; }
+   기본 위치는 top/left 가 아니라 top/right다 — Playwright 실측(1400×900,
+   1000×700 두 창 크기) 결과, 에디터 iframe 안에서 어떤 창 크기에서도
+   변치 않는 값은 top-toolbar 높이(~40px), left/right-toolbar 폭(각 46px
+   +iframe 여백 6px=52px), bottom-toolbar 높이(~42px) 뿐이고, 그 안쪽은
+   전부 캔버스다(즉 "툴바 4개를 하나도 안 가리는 자리"는 캔버스 내부에만
+   있다 — 격리된 여백이 없다). top:8/left:8 이었던 기존 위치는 top-toolbar와
+   left-toolbar 둘 다와 겹쳤다(스크린샷 periodic-panel.png로 확인된 원래
+   버그). top-toolbar 아래(52px 이상) + right-toolbar 왼쪽(62px 이상)으로
+   옮기면 4개 툴바 중 어느 것도 가리지 않는다 — 캔버스 침범은 여전히
+   있지만(패널이 있는 이상 불가피), 요청한 "덜 가리게"의 실제 요구(툴바
+   비가림)는 만족한다. 드래그로 옮길 수 있으므로 이 값은 어디까지나 기본값. */
+.periodic-panel { position: absolute; top: 52px; right: 62px; z-index: 5;
+  max-height: calc(100% - 102px); overflow: auto; }
 .periodic-panel[hidden] { display: none; }
+/* 드래그(또는 세션 복원)로 한 번이라도 옮기면 mola-integration.js의
+   positionPeriodicPanel() 이 top/left/max-height 를 인라인 스타일로 직접
+   덮어쓰고 right:auto 를 준다 — 인라인 스타일이 항상 이 규칙보다 우선하므로
+   별도 클래스가 필요 없다. */
 
-/* 패널·팝업 공용 껍데기 — 반투명 금지, 불투명 배경 + 그림자만 */
-.periodic-table { background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--r-card); box-shadow: var(--shadow); padding: 8px;
-  font-family: var(--mono); }
+/* 패널·팝업 공용 껍데기 — 반투명 금지, 항상 흰 배경 + 어두운 글자만.
+   var(--panel) 등 테마 토큰을 쓰면 다크모드에서 어두운 배경으로 바뀐다 —
+   이 프로젝트는 캔버스 자체를 다크모드에서도 흰 배경으로 고정해 두고
+   있다(index.html --canvas:#fff, 주석 "도판은 항상 흰 배경(PPT용)") —
+   주기율표는 그 캔버스 위에 얹혀 원자를 찍는 도구이므로 같은 흰 바탕이어야
+   눈에 익은 배색이 유지된다. 아래 색상은 index.html 라이트 테마 토큰의
+   실제 값(--ink/--panel-2/--line/--line-2/--accent/--accent-2/--faint)을
+   그대로 하드코딩한 것 — 다크모드 미디어쿼리가 절대 못 덮어쓰게 리터럴로
+   고정한다. */
+.periodic-table { background: #ffffff; color: #14202e; border: 1px solid #d9e0ea;
+  border-radius: var(--r-card);
+  box-shadow: 0 14px 36px rgba(14,32,58,.20), 0 2px 8px rgba(14,32,58,.14);
+  padding: 5px; font-family: var(--mono); }
 
-.pt-frequent { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 8px;
-  margin-bottom: 8px; border-bottom: 1px solid var(--line); max-width: 456px; }
-.pt-grid { display: grid; grid-template-columns: repeat(18, 22px);
-  grid-auto-rows: 22px; gap: 2px; }
+/* ── 드래그 헤더 ───────────────────────────────────────────────────────
+   패널 변형에서만 보인다(팝업은 임시로 뜨는 것이라 드래그 대상이 아니다 —
+   JS에서 팝업 빌드 시 header 를 안 붙인다). */
+.pt-header { display: flex; align-items: center; gap: 6px; padding: 2px 4px 5px 2px;
+  margin-bottom: 4px; border-bottom: 1px solid #e3e7ee; cursor: grab;
+  -webkit-user-select: none; user-select: none; touch-action: none; }
+.pt-header:active { cursor: grabbing; }
+.pt-header .pt-grip { color: #8b97a8; font-size: 11px; letter-spacing: 1px; }
+.pt-header .pt-title { font-size: 10.5px; font-weight: 700; color: #4a5568;
+  flex: 1; }
+.pt-header .pt-collapse-btn { font-family: inherit; font-size: 10px; font-weight: 700;
+  padding: 2px 6px; border-radius: 5px; border: 1px solid #d9e0ea; background: #f3f6fa;
+  color: #17489f; cursor: pointer; line-height: 1.3; }
+.pt-header .pt-collapse-btn:hover { background: #e8eef8; }
+
+.pt-frequent { display: flex; flex-wrap: wrap; gap: 3px; padding-bottom: 5px;
+  margin-bottom: 5px; border-bottom: 1px solid #e3e7ee; max-width: 344px; }
+/* 컴팩트 모드 — 전체 18족 표를 접고 자주 쓰는 원소 줄만 남긴다(발자국을
+   크게 줄이는 요청에 대한 답 — 큰 분자를 그리는 동안엔 이 줄이면 충분한
+   경우가 많다). */
+.periodic-table.pt-compact .pt-grid { display: none; }
+.periodic-table.pt-compact .pt-frequent { border-bottom: 0; margin-bottom: 0;
+  padding-bottom: 1px; }
+
+.pt-grid { display: grid; grid-template-columns: repeat(18, 17px);
+  grid-auto-rows: 17px; gap: 1.5px; }
 
 .pt-cell { display: flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border-radius: 5px; border: 1px solid transparent;
-  background: var(--panel-2); font-weight: 700; font-size: 10.5px; line-height: 1;
-  cursor: pointer; padding: 0; position: relative; }
-.pt-cell:hover { border-color: var(--accent-line); background: var(--accent-soft); }
-.pt-cell.selected { border-color: var(--accent); background: var(--accent-soft);
-  box-shadow: 0 0 0 2px var(--accent-soft); }
-.pt-cell-big { width: 34px; height: 34px; border-radius: 8px; font-size: 14px; }
+  width: 17px; height: 17px; border-radius: 4px; border: 1px solid transparent;
+  background: #f3f6fa; font-weight: 700; font-size: 9px; line-height: 1;
+  cursor: pointer; padding: 0; position: relative; color: #14202e; }
+.pt-cell:hover { border-color: rgba(30,91,198,.34); background: rgba(30,91,198,.10); }
+.pt-cell.selected { border-color: #1e5bc6; background: rgba(30,91,198,.10);
+  box-shadow: 0 0 0 2px rgba(30,91,198,.10); }
+.pt-cell-big { width: 27px; height: 27px; border-radius: 7px; font-size: 12px; }
 .pt-cell.pt-empty { background: transparent; border: 0; cursor: default; }
-.pt-cell.pt-ph { background: transparent; border: 1px dashed var(--line-2);
-  color: var(--faint); font-size: 8.5px; font-weight: 600; cursor: default; }
+.pt-cell.pt-ph { background: transparent; border: 1px dashed #c5cedb;
+  color: #8b97a8; font-size: 7px; font-weight: 600; cursor: default; }
 .pt-sym { pointer-events: none; }
-.pt-z { position: absolute; top: 1px; right: 2px; font-size: 6px;
-  font-weight: 600; color: var(--faint); pointer-events: none; }
+.pt-z { position: absolute; top: 0; right: 1px; font-size: 5px;
+  font-weight: 600; color: #8b97a8; pointer-events: none; }
+
+/* Telex(캔버스 원자 기호와 같은 서체) — mola-integration.js가 에디터 번들의
+   asset-manifest.json 에서 실제 해시 경로를 읽어 @font-face 를 런타임에
+   주입하고, 성공하면 documentElement 에 이 클래스를 붙인다. 주입 실패(오프라인,
+   manifest 구조 변경 등) 시에는 클래스가 안 붙어 기존 --mono 서체로 조용히
+   폴백한다 — 실패해도 패널 자체는 깨지지 않는다. */
+html.pt-telex-loaded .pt-sym { font-family: "Telex", var(--mono); }
 
 /* ── 주기율표 — 우클릭 팝업 ──────────────────────────────────────────
    빈 캔버스 우클릭 지점에 뜨는 변형 — 부모 문서(body) 최상단에 붙어
@@ -87,7 +138,7 @@ button.ghost:disabled { opacity: .45; cursor: default; }
 .periodic-popup { position: fixed; z-index: 1000; }
 
 @media (max-width: 680px) {
-  .pt-grid { grid-template-columns: repeat(18, 18px); grid-auto-rows: 18px; }
-  .pt-cell { width: 18px; height: 18px; font-size: 9px; }
-  .pt-cell-big { width: 28px; height: 28px; font-size: 12.5px; }
+  .pt-grid { grid-template-columns: repeat(18, 15px); grid-auto-rows: 15px; }
+  .pt-cell { width: 15px; height: 15px; font-size: 8px; }
+  .pt-cell-big { width: 23px; height: 23px; font-size: 11px; }
 }

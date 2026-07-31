@@ -1067,6 +1067,36 @@
     }
   }
 
+  // ── 손실 안내: 뷰어/molfile 로 안 넘어가는 그리기 표기 ───────────────
+  // 포크가 추가한 표기 2종은 KET(작업본)·SVG·PNG 에는 그대로 남지만, MOL V2000
+  // 에는 담을 표준 필드가 아예 없다. 뷰어로 보내는 경로가 getMolfile("v2000")
+  // 이므로 여기서 반드시 사라진다. 게다가 뷰어 엔진(RDKit)에는 "굵은 결합"
+  // 개념 자체가 없다 — 조사 근거는 .superpowers/sdd/bold-and-offset-bonds.md §2-4.
+  // 막지는 않는다. 그림이 목적이면 SVG/PNG 로 저장하면 완전히 보존된다는 것까지
+  // 같이 알려 준다.
+  //
+  // 재빌드와 무관한 부모 페이지 코드다 — 캔버스의 결합을 읽기만 한다.
+  function molaNotationLossNotice(k) {
+    let bold = 0;
+    let side = 0;
+    try {
+      const bonds = k.editor.render.ctab.molecule.bonds;
+      bonds.forEach((bond) => {
+        if (bond.molaBoldBond) bold += 1;
+        // 0(대칭)이 유효값이라 truthy 검사를 쓰면 안 된다
+        if (bond.molaDoubleBondSide !== null && bond.molaDoubleBondSide !== undefined) side += 1;
+      });
+    } catch {
+      return "";   // 내부 구조가 바뀌어도 보내기 자체는 막지 않는다
+    }
+    if (!bold && !side) return "";
+    const what = [];
+    if (bold) what.push("굵은 결합");
+    if (side) what.push("이중결합 선 위치");
+    // "표기는" 으로 받아 조사 문제를 피한다("결합은" / "위치는" 이 갈린다)
+    return what.join("·") + " 표기는 뷰어와 molfile 에 담기지 않아 사라집니다 — 그림 그대로 남기려면 SVG/PNG 로 저장하세요.";
+  }
+
   // ── 에디터 → 뷰어 ─────────────────────────────────────────────────
   async function sendToViewer() {
     const k = ui.ketcher;
@@ -1100,10 +1130,16 @@
       st.textContent = "캔버스가 비어 있습니다.";
       return;
     }
-    st.textContent = "";
+    // 손실 안내는 에디터 상태줄에 남겨 둔다(에디터로 돌아왔을 때 보이도록).
+    const lossNotice = molaNotationLossNotice(k);
+    st.textContent = lossNotice;
     parsed.molblock2d = molblock;
     parsed.__fromEditor = true;
-    const editorStatusMessage = "에디터에서 가져온 구조 — 3D 좌표가 없어 2D만 표시합니다.";
+    // 뷰어 쪽 상태줄에도 같이 붙인다 — 손실이 일어나는 바로 그 순간에 보여야
+    // 안내로서 의미가 있다(에디터 상태줄은 뷰어 모드에서 안 보인다).
+    const editorStatusMessage =
+      "에디터에서 가져온 구조 — 3D 좌표가 없어 2D만 표시합니다." +
+      (lossNotice ? " " + lossNotice : "");
     loadMolecule(parsed, editorStatusMessage);
     // 설계: 3D 창은 비운다. only2d 는 기존 CSS 에 이미 있는(지금까지 죽은) 분기다
     document.getElementById("stageWrap").dataset.mode = "only2d";

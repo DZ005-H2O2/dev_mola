@@ -918,6 +918,30 @@
   }
 
   // ── 에디터 iframe 생성·준비 감지 ──────────────────────────────────
+  // 결합 도구가 낸 표기 알림을 에디터 상태줄에 띄운다.
+  //
+  // 왜 필요한가 — 이중결합 도구로 **같은 결합을 반복 클릭하면 선 위치가 순환**한다
+  // (ChemDraw 식: 자동 → 한쪽 → 반대쪽 → 가운데 → 자동). 결과가 "선이 한 칸 움직인다"
+  // 뿐이라 글자로 짚어주지 않으면 방금 무엇을 골랐는지 알기 어렵다. 굵은 결합
+  // 도구의 켜기/끄기도 같다.
+  //
+  // 포크의 `editor.event.message` 채널에는 드래그 각도 등 다른 정보도 흐르므로
+  // 접두사(`MOLA:`)로 갈라낸다 — 접두사가 없는 메시지는 무시한다.
+  const MOLA_NOTICE_PREFIX = "MOLA:";
+  function armMolaNotationStatus(k) {
+    try {
+      k.editor.event.message.add((msg) => {
+        const info = msg && msg.info;
+        if (typeof info !== "string") return;
+        if (info.indexOf(MOLA_NOTICE_PREFIX) !== 0) return;
+        const st = document.getElementById("editorStatus");
+        if (st) flashSaveStatus(st, info.slice(MOLA_NOTICE_PREFIX.length));
+      });
+    } catch (e) {
+      // 알림은 "있으면 좋은 것"이다 — 실패해도 편집 자체를 막지 않는다
+    }
+  }
+
   function ensureEditor() {
     if (ui.readyPromise) return ui.readyPromise;
     ui.readyPromise = createEditor();
@@ -950,6 +974,7 @@
         armAutosave(k);
         updateSaveButtonsState();   // 새 에디터는 보통 빈 캔버스로 시작 — 버튼 비활성화 반영
         setupCanvasContextMenu(frame, k);   // 빈 캔버스 우클릭 → 주기율표 팝업
+        armMolaNotationStatus(k);   // 결합 도구의 표기 순환/토글 알림 → 상태줄
         resolve(k);
       };
       const fail = (why) => {

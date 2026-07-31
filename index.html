@@ -2183,6 +2183,11 @@
         minFontSize: f2d,
         maxFontSize: f2d,
         addStereoAnnotation: true,
+        // [MOLA] wavy(물결, 입체 미정) 결합 정보 손실 수정 - RDKit 이 매번
+        // 새로 계산하는 쐐기/해시 배정 대신 molfile 원본의 결합 방향(either
+        // 포함)을 그대로 존중해 그린다. 확정 입체중심 렌더는 바뀌지 않는다
+        // (tools/extract-rdkit.mjs 변환 6, .superpowers/sdd/wavy-bond-fix.md 참고).
+        useMolBlockWedging: true,
         // 원자가 겹쳐도 빨간 경고 네모(□)를 그리지 않는다. PubChem 3D 좌표를
         // 2D로 쓰면 겹침이 흔한데, 그 경고 박스가 오히려 지저분해 보인다.
         flagCloseContactsDist: -1,

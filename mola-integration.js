@@ -18,6 +18,18 @@
     // 결합 자체는 이 키와 무관하게 "결합" 그룹 도구에 그대로 남아 계속 쓸 수
     // 있다 — 숨기는 건 별도의 입체화학 "라벨" 지정 UI뿐이다.
     "enhanced-stereo",
+    // ET 트리(아래 extended-table) 첫 항목 "A"(임의의 원자) 하나만을 위한
+    // 전용 지름길 버튼 — 아래 새로 추가한 "일반 원자" 패널 줄의 A 버튼이
+    // 완전히 같은 결과(editor.tool('atom',{label:'A',pseudo:'A',type:'gen'}))를
+    // 내므로 중복이다. 숨겨도 기능 손실이 없다(조사: .superpowers/sdd/
+    // sketcher-ui-parity.md §2).
+    "any-atom",
+    // Extended Table 모달 — 7그룹 34개 QSAR/약물화학 계열 쿼리원자(ALK, ARY,
+    // HAR 등)가 중첩 트리로 잔뜩 나열되는 팝업. 사용자가 "잡다하다"고 느낀
+    // 대상 그 자체이며, 실제로 자주 쓸 A/Q/M/X/R 은 새 "일반 원자" 패널
+    // 줄로 대체했다(주기율표 패널 참고). period-table(진짜 118원소 주기율표)
+    // 과는 별개 팝업이라 이건 숨겨도 주기율표 기능에는 영향이 없다.
+    "extended-table",
   ];
   const EDITOR_SRC =
     "assets/editor/index.html?hiddenControls=" + HIDDEN_CONTROLS.join(",");
@@ -287,6 +299,22 @@
     return elementColors[sym] || PT_DEFAULT_INK;
   }
 
+  // Sketcher 좌측 패널의 "A" 드롭다운에 해당하는 자리 — ET(extended-table,
+  // 위에서 숨김) 34개 항목 중 실제로 자주 쓸 만한 5개만 골랐다. 클릭 시
+  // editor.tool('atom', {label, pseudo, type:'gen'}) 로 넘긴다 — 이 shape은
+  // "any-atom" 액션(action/index.ts:273-285, 위에서 숨긴 그 버튼)이 실제
+  // 프로덕션에서 이미 쓰는 것과 완전히 동일하다(pseudo는 항상 label과
+  // 같은 값 — ExtendedTable.tsx의 result() 도 동일하게 만든다). A 하나로
+  // 먼저 캔버스+molfile 실측 검증한 뒤 나머지 4개도 같은 형태로 구성했다
+  // (검증 결과는 .superpowers/sdd/sketcher-step1-report.md 참고).
+  const GENERIC_ATOMS = [
+    { sym: "A", title: "임의의 원자" },
+    { sym: "Q", title: "탄소·수소를 제외한 임의 원자" },
+    { sym: "M", title: "임의의 금속" },
+    { sym: "X", title: "할로젠(F/Cl/Br/I/At)" },
+    { sym: "R", title: "R-그룹 표시용 자리표시 원자(pseudoatom)" },
+  ];
+
   let currentAtomLabel = null;   // 마지막으로 고른 원소 — 패널·팝업 선택 표시 동기화용
 
   function ptCellButton(sym, z, big) {
@@ -315,6 +343,39 @@
     d.className = "pt-cell pt-ph";
     d.textContent = label;
     return d;
+  }
+
+  // "일반 원자" 줄 버튼 — 진짜 원소 버튼(ptCellButton)과 클릭 동작이 다르므로
+  // (label만이 아니라 {label,pseudo,type:'gen'} 전체를 넘겨야 한다) 별도
+  // 함수로 만든다. data-pt-el 은 그대로 붙여 syncPeriodicSelection() 의
+  // 선택 하이라이트 로직을 원소 버튼과 공유한다(심볼 충돌 없음 — A/Q/M/X/R
+  // 는 실제 원소 기호가 아니다).
+  function ptGenericButton(sym, title) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pt-cell pt-cell-generic";
+    b.dataset.ptEl = sym;
+    b.title = title;
+    const symEl = document.createElement("span");
+    symEl.className = "pt-sym";
+    symEl.textContent = sym;
+    b.appendChild(symEl);
+    b.addEventListener("click", () => selectGenericAtom(sym));
+    return b;
+  }
+
+  function buildGenericAtomRow() {
+    const wrap = document.createElement("div");
+    wrap.className = "pt-generic";
+    const label = document.createElement("div");
+    label.className = "pt-generic-label";
+    label.textContent = "일반 원자";
+    wrap.appendChild(label);
+    const row = document.createElement("div");
+    row.className = "pt-generic-row";
+    GENERIC_ATOMS.forEach(({ sym, title }) => row.appendChild(ptGenericButton(sym, title)));
+    wrap.appendChild(row);
+    return wrap;
   }
 
   function frequentElementZ(sym) {
@@ -362,6 +423,11 @@
     });
     root.appendChild(freq);
 
+    // 자주 쓰는 원소 줄과 전체 표 사이 — Sketcher의 "A" 드롭다운 자리.
+    // 컴팩트 모드에서도 접히지 않는다(자주 쓰는 원소 줄과 같은 급의
+    // "항상 보이는 짧은 줄"로 취급).
+    root.appendChild(buildGenericAtomRow());
+
     const grid = document.createElement("div");
     grid.className = "pt-grid";
     PT_MAIN.forEach((row, r) => {
@@ -399,12 +465,15 @@
     });
   }
 
-  function selectElement(sym) {
+  // 실제 원소·일반 원자(generic atom) 클릭이 공유하는 공통 골격 — opts가
+  // 다를 뿐 나머지(에디터 준비 확인, 상태 메시지, 선택 하이라이트 동기화,
+  // 팝업 닫기)는 완전히 같다.
+  function selectAtom(sym, opts) {
     const st = document.getElementById("editorStatus");
     const k = ui.ketcher;
     if (!k) { st.textContent = "에디터가 아직 준비되지 않았습니다."; return; }
     try {
-      k.editor.tool("atom", { label: sym });
+      k.editor.tool("atom", opts);
     } catch (e) {
       st.textContent = "원소를 선택하지 못했습니다: " + (e && e.message ? e.message : e);
       return;
@@ -413,6 +482,17 @@
     syncPeriodicSelection();
     flashSaveStatus(st, `이제 클릭하면 ${sym} 원자가 찍힙니다.`);
     closePeriodicPopup();
+  }
+
+  function selectElement(sym) {
+    selectAtom(sym, { label: sym });
+  }
+
+  // "일반 원자" 줄 전용 — any-atom 액션(action/index.ts:273-285)과 완전히
+  // 같은 opts shape. label과 pseudo는 항상 같은 값이다(ExtendedTable.tsx의
+  // result()도 동일 규칙).
+  function selectGenericAtom(sym) {
+    selectAtom(sym, { label: sym, pseudo: sym, type: "gen" });
   }
 
   // ── 패널(상시 오버레이) ───────────────────────────────────────────
@@ -479,8 +559,8 @@
   // ── 패널 드래그 이동 ──────────────────────────────────────────────
   // 위치 기준은 #editorFrameSlot(패널의 position:absolute 컨테이닝 블록) —
   // "화면 밖으로 못 나가게"를 프레임 슬롯(에디터가 실제로 보이는 영역) 기준으로
-  // 해석한다. 기본값(top:52px/right:62px, CSS)은 4개 툴바를 하나도 안 가리도록
-  // 실측(measure2.mjs 스타일 Playwright 측정, 아래 CSS 주석 참고)해 고른 값이고,
+  // 해석한다. 기본값(top:52px/left:152px, CSS)은 왼쪽 툴바를 가리지 않도록
+  // 실측(Playwright 측정, 아래 CSS 주석 참고)해 고른 값이고,
   // 드래그로 옮기면 이 함수들이 top/left 인라인 px 로 완전히 대체한다.
   function clampPeriodicPosition(top, left) {
     const slot = document.getElementById("editorFrameSlot");

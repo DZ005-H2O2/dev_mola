@@ -76,21 +76,32 @@
   editorWrap.innerHTML =
     '<div class="editbar">' +
     '  <button id="sendToViewerBtn" class="ghost" type="button">← 뷰어로 보내기</button>' +
+    // 빠른 토글 묶음 — "설정"이지 "액션"이 아니므로 큰 버튼들과 시각적으로 분리
+    // (테두리 상자 + 정사각 아이콘 버튼). 자주 쓰는 토글이 늘면 여기에 추가.
+    '  <div class="editbar-quick" role="group" aria-label="빠른 설정 토글">' +
+    '    <button id="snapAngleBtn" class="quick-toggle" type="button" aria-pressed="true"' +
+    '            title="각도 스냅 — 그리기·드래그 회전을 15° 단위로 딸깍 (드래그 중 Alt = 임시 해제)">∠</button>' +
+    '    <button id="snapLengthBtn" class="quick-toggle" type="button" aria-pressed="true"' +
+    '            title="길이 고정 — 그릴 땐 표준 결합 길이, 드래그 회전 땐 원래 길이 유지 (드래그 중 Alt = 임시 해제)">↔</button>' +
+    "  </div>" +
     '  <div class="editbar-actions">' +
-    '    <button id="snapAngleBtn" class="ghost snap-toggle" type="button" aria-pressed="true"' +
-    '            title="말단 원자 드래그 시 각도를 스텝(기본 15°)에 딸깍 맞춤. 드래그 중 Alt = 임시 해제">∠ 딸깍</button>' +
-    '    <button id="snapLengthBtn" class="ghost snap-toggle" type="button" aria-pressed="true"' +
-    '            title="말단 원자 드래그 시 결합 길이를 유지. 드래그 중 Alt = 임시 해제">↔ 길이고정</button>' +
     '    <button id="periodicToggleBtn" class="ghost" type="button" aria-pressed="false">주기율표</button>' +
-    '    <button id="copyImageBtn" class="ghost" type="button" disabled>📋 그림 복사</button>' +
-    '    <button id="savePngBtn" class="ghost" type="button" disabled>PNG 저장</button>' +
-    '    <button id="saveSvgBtn" class="ghost" type="button" disabled>SVG 저장</button>' +
-    '    <button id="saveKetBtn" class="ghost" type="button" disabled>작업본 저장</button>' +
+    '    <span class="split-btn">' +
+    '      <button id="copyImageBtn" class="ghost" type="button" disabled>📋 그림 복사</button>' +
+    '      <button id="copyImageMenuBtn" class="ghost split-caret" type="button" disabled' +
+    '              aria-label="복사 형식 선택">▾</button>' +
+    "    </span>" +
+    '    <span class="split-btn">' +
+    '      <button id="saveImageBtn" class="ghost" type="button" disabled>💾 그림 저장</button>' +
+    '      <button id="saveImageMenuBtn" class="ghost split-caret" type="button" disabled' +
+    '              aria-label="저장 형식 선택">▾</button>' +
+    "    </span>" +
     "  </div>" +
     '  <span class="estatus" id="editorStatus"></span>' +
     "</div>" +
     '<div class="frame-slot" id="editorFrameSlot">' +
     '  <div class="periodic-panel" id="periodicPanel" hidden></div>' +
+    '  <div class="editor-tips" id="editorTips" hidden></div>' +
     '  <div class="frame-msg" id="editorFrameMsg">에디터를 불러오는 중입니다…</div>' +
     "</div>";
   appEl.appendChild(editorWrap);
@@ -207,15 +218,36 @@
     });
   });
 
-  // ── 저장 버튼 바 (그림 복사·PNG·SVG·작업본) ──────────────────────
-  // 캔버스가 비면 generateImage()가 던지므로(Task 1) 버튼을 선제적으로 비활성화한다.
-  // isBlank() 판정 자체가 실패하면 "비어있지 않다"로 간주한다 — sendToEditor의
-  // 덮어쓰기 확인(I2)과 같은 안전 쪽 기본값이다: 버튼이 눌려도 되는 상태로 두고,
-  // 실제로 비어 있었다면 generateImage가 던지는 에러를 그대로 보여주면 된다.
+  // ── 저장 버튼 바 (그림 복사 ▾ · 그림 저장 ▾) ─────────────────────
+  // 사용자 결정(2026-08-10): 버튼은 두 개만 — 복사(기본 SVG)·저장(기본 PNG).
+  // ▾ 메뉴로 형식을 고르면 즉시 실행되면서 그 형식이 기본값으로 기억된다
+  // (localStorage). 작업본(KET)은 저장 메뉴 안의 형식 하나로 흡수.
+  // 캔버스가 비면 generateImage()가 던지므로 버튼을 선제적으로 비활성화한다.
+  // isBlank() 판정 자체가 실패하면 "비어있지 않다"로 간주한다(안전 쪽 기본값).
   const copyImageBtn = document.getElementById("copyImageBtn");
-  const savePngBtn = document.getElementById("savePngBtn");
-  const saveSvgBtn = document.getElementById("saveSvgBtn");
-  const saveKetBtn = document.getElementById("saveKetBtn");
+  const copyImageMenuBtn = document.getElementById("copyImageMenuBtn");
+  const saveImageBtn = document.getElementById("saveImageBtn");
+  const saveImageMenuBtn = document.getElementById("saveImageMenuBtn");
+
+  const FORMAT_LABELS = { svg: "SVG", png: "PNG", ket: "KET" };
+  const COPY_FORMATS = ["svg", "png"];
+  const SAVE_FORMATS = ["png", "svg", "ket"];
+  function getFormatPref(key, allowed, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return allowed.includes(v) ? v : fallback;
+    } catch { return fallback; }
+  }
+  function setFormatPref(key, v) {
+    try { localStorage.setItem(key, v); } catch { /* 프라이빗 모드 등 — 무시 */ }
+  }
+  function refreshSaveButtonLabels() {
+    const cf = getFormatPref("molaCopyFormat", COPY_FORMATS, "svg");
+    const sf = getFormatPref("molaSaveFormat", SAVE_FORMATS, "png");
+    copyImageBtn.textContent = `📋 그림 복사 (${FORMAT_LABELS[cf]})`;
+    saveImageBtn.textContent = `💾 그림 저장 (${FORMAT_LABELS[sf]})`;
+  }
+  refreshSaveButtonLabels();
 
   function updateSaveButtonsState() {
     const k = ui.ketcher;
@@ -223,7 +255,7 @@
     if (k) {
       try { blank = k.editor.struct().isBlank(); } catch { blank = false; }
     }
-    [copyImageBtn, savePngBtn, saveSvgBtn, saveKetBtn].forEach((b) => {
+    [copyImageBtn, copyImageMenuBtn, saveImageBtn, saveImageMenuBtn].forEach((b) => {
       if (b) b.disabled = blank;
     });
   }
@@ -816,7 +848,17 @@
       if (atomSet.has(bond.begin) && atomSet.has(bond.end)) bonds.push(bid);
     });
     try {
+      // 정식 선택 UI(점선 사각형 + 회전 핸들 + 반전/휴지통)까지 띄운다 —
+      // selection() 만으로는 파란 하이라이트만 그려진다. rotateController 는
+      // (a) 활성 도구가 SelectTool 이고 (b) rerender() 가 불려야 나타나는데,
+      // 명시적 {atoms,bonds} 선택은 (b)를 자동으로 해 주지 않는다
+      // (Editor.selection 은 ci==='all' 일 때만 rerender — 실측 조사 확인).
+      // tool('select') 는 SelectTool 에 cancel() 이 없어 선택을 지우지 않는다.
+      // 좌측 툴바의 도구 하이라이트는 redux 를 안 거쳐 갱신되지 않는 화장품
+      // 수준 차이만 있다(주기율표 패널의 tool('atom') 호출과 같은 관례).
+      k.editor.tool("select", "lasso");
       k.editor.selection({ atoms, bonds });
+      k.editor.rotateController.rerender();
     } catch {
       return;
     }
@@ -904,54 +946,166 @@
     }
   }
 
-  copyImageBtn.addEventListener("click", () => withSaveGuard(async (k, st) => {
-    // 사용자 제스처 체인 보존: clipboard.write를 generateImage 완료 "전"에 호출해야
-    // 한다(await 뒤에 호출하면 Safari/Firefox가 제스처 위임이 끊겼다고 보고 거부한다).
-    // ClipboardItem 생성자는 Promise 값을 받을 수 있으므로(MDN) generateImage()의
-    // Promise를 기다리지 않고 그대로 넘긴다. 일부 브라우저는 이 Promise 형태를
-    // 지원하지 않으므로(TypeError 등) 그 경우 기존 await 방식으로 폴백한다.
-    const imagePromise = k.generateImage("", { outputFormat: "png" });
+  // 그림 복사 — PNG 모드는 기존 검증된 경로(제스처 체인 보존: clipboard.write 를
+  // generateImage 완료 "전"에 호출, ClipboardItem 은 Promise 값을 받는다 — MDN).
+  // SVG 모드는 크로미움이 클립보드에 image/svg+xml 을 거부하므로(허용 목록:
+  // png/text/html) ① 일단 svg mime 을 시도하고(미래 브라우저 대비, 실패는 즉시
+  // TypeError) ② text/html(인라인 <svg>) + image/png 동시 탑재로 폴백한다 —
+  // PowerPoint 등은 HTML 조각이나 PNG 중 지원하는 쪽을 집는다.
+  async function copyImage(k, st, format) {
+    if (format === "png") {
+      const imagePromise = k.generateImage("", { outputFormat: "png" });
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": imagePromise }),
+        ]);
+        flashSaveStatus(st, "PNG 복사했습니다.");
+        return;
+      } catch (e) {
+        const settled = await Promise.allSettled([imagePromise]);
+        if (settled[0].status === "rejected") throw settled[0].reason;
+      }
+      // Promise 형태 ClipboardItem 미지원 브라우저 — 완성 Blob 으로 재시도
+      try {
+        const blob = await imagePromise;
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        flashSaveStatus(st, "PNG 복사했습니다.");
+      } catch {
+        st.textContent = "클립보드를 쓸 수 없습니다 — 그림 저장을 이용하세요.";
+      }
+      return;
+    }
+    // SVG 모드
+    const svgPromise = k.generateImage("", { outputFormat: "svg" });
+    const pngPromise = k.generateImage("", { outputFormat: "png" });
     try {
       await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": imagePromise }),
+        new ClipboardItem({ "image/svg+xml": svgPromise }),
       ]);
-      flashSaveStatus(st, "복사했습니다.");
+      flashSaveStatus(st, "SVG 복사했습니다.");
       return;
     } catch (e) {
-      // imagePromise 자체가 실패한 거라면(캔버스 문제 등 진짜 에러) 클립보드 미지원이
-      // 아니므로 그대로 전파해 withSaveGuard가 원인 메시지를 보여주게 한다.
-      const settled = await Promise.allSettled([imagePromise]);
+      const settled = await Promise.allSettled([svgPromise]);
       if (settled[0].status === "rejected") throw settled[0].reason;
     }
-    // 여기 도달 = Promise 값을 받는 ClipboardItem을 브라우저가 지원하지 않는 경우
-    // (예: 구버전 Firefox) — 완성된 Blob으로 다시 시도한다.
     try {
-      const blob = await imagePromise;
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      flashSaveStatus(st, "복사했습니다.");
+      const svgText = await (await svgPromise).text();
+      const htmlBlob = new Blob([svgText], { type: "text/html" });
+      const pngBlob = await pngPromise;
+      await navigator.clipboard.write([
+        new ClipboardItem({ "text/html": htmlBlob, "image/png": pngBlob }),
+      ]);
+      flashSaveStatus(st, "SVG(HTML)+PNG 복사했습니다.");
     } catch {
-      // 클립보드 API는 보안 컨텍스트/권한이 없으면 실패한다 — PNG 저장으로 안내
-      st.textContent = "클립보드를 쓸 수 없습니다 — PNG 저장을 이용하세요.";
+      st.textContent = "클립보드를 쓸 수 없습니다 — 그림 저장을 이용하세요.";
     }
-  }));
+  }
 
-  savePngBtn.addEventListener("click", () => withSaveGuard(async (k, st) => {
-    const blob = await k.generateImage("", { outputFormat: "png" });
-    downloadBlob(blob, `그린_구조_${saveTimestamp()}.png`);
-    flashSaveStatus(st, "저장했습니다.");
-  }));
+  async function saveImage(k, st, format) {
+    if (format === "ket") {
+      const ket = await k.getKet();
+      downloadBlob(new Blob([ket], { type: "application/json" }), `그린_구조_${saveTimestamp()}.ket`);
+    } else {
+      const blob = await k.generateImage("", { outputFormat: format });
+      downloadBlob(blob, `그린_구조_${saveTimestamp()}.${format}`);
+    }
+    flashSaveStatus(st, `${FORMAT_LABELS[format]} 저장했습니다.`);
+  }
 
-  saveSvgBtn.addEventListener("click", () => withSaveGuard(async (k, st) => {
-    const blob = await k.generateImage("", { outputFormat: "svg" });
-    downloadBlob(blob, `그린_구조_${saveTimestamp()}.svg`);
-    flashSaveStatus(st, "저장했습니다.");
-  }));
+  copyImageBtn.addEventListener("click", () => withSaveGuard((k, st) =>
+    copyImage(k, st, getFormatPref("molaCopyFormat", COPY_FORMATS, "svg"))));
+  saveImageBtn.addEventListener("click", () => withSaveGuard((k, st) =>
+    saveImage(k, st, getFormatPref("molaSaveFormat", SAVE_FORMATS, "png"))));
 
-  saveKetBtn.addEventListener("click", () => withSaveGuard(async (k, st) => {
-    const ket = await k.getKet();
-    downloadBlob(new Blob([ket], { type: "application/json" }), `그린_구조_${saveTimestamp()}.ket`);
-    flashSaveStatus(st, "저장했습니다.");
-  }));
+  // ▾ 형식 메뉴 — 항목 클릭 = 즉시 실행 + 그 형식을 기본값으로 기억
+  let formatMenuEl = null;
+  function closeFormatMenu() {
+    if (formatMenuEl) { formatMenuEl.remove(); formatMenuEl = null; }
+  }
+  function openFormatMenu(anchorBtn, formats, prefKey, run) {
+    closeFormatMenu();
+    const menu = document.createElement("div");
+    menu.className = "format-menu";
+    const current = getFormatPref(prefKey, formats, formats[0]);
+    formats.forEach((f) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.textContent = (f === current ? "✓ " : "") +
+        (f === "ket" ? "KET (작업본, 무손실)" : FORMAT_LABELS[f]);
+      item.addEventListener("click", () => {
+        closeFormatMenu();
+        setFormatPref(prefKey, f);
+        refreshSaveButtonLabels();
+        withSaveGuard((k, st) => run(k, st, f));
+      });
+      menu.appendChild(item);
+    });
+    const rect = anchorBtn.getBoundingClientRect();
+    menu.style.left = `${rect.left + window.scrollX}px`;
+    menu.style.top = `${rect.bottom + window.scrollY + 2}px`;
+    document.body.appendChild(menu);
+    formatMenuEl = menu;
+  }
+  document.addEventListener("mousedown", (e) => {
+    if (formatMenuEl && !formatMenuEl.contains(e.target) &&
+        e.target !== copyImageMenuBtn && e.target !== saveImageMenuBtn) {
+      closeFormatMenu();
+    }
+  });
+  copyImageMenuBtn.addEventListener("click", () => {
+    if (formatMenuEl) { closeFormatMenu(); return; }
+    openFormatMenu(copyImageMenuBtn, COPY_FORMATS, "molaCopyFormat", copyImage);
+  });
+  saveImageMenuBtn.addEventListener("click", () => {
+    if (formatMenuEl) { closeFormatMenu(); return; }
+    openFormatMenu(saveImageMenuBtn, SAVE_FORMATS, "molaSaveFormat", saveImage);
+  });
+
+  // ── 실시간 팁(우하단) ────────────────────────────────────────────
+  // 호버 대상(원자/결합)과 활성 도구에 따라 단축키 힌트를 보여준다.
+  // iframe 내부 mousemove 를 같은 출처로 직접 듣고, 판정은 에디터 자신의
+  // findItem(모델 좌표 거리 기반)을 그대로 빌린다 — 별도 히트테스트 구현 없음.
+  // 120ms 스로틀: findItem 은 가볍지만 mousemove 빈도 그대로 부를 이유가 없다.
+  function armEditorTips(frame, k) {
+    const tips = document.getElementById("editorTips");
+    const doc = frame.contentDocument;
+    if (!tips || !doc) return;
+    let lastAt = 0;
+    let lastText = "";
+    function setTip(text) {
+      if (text === lastText) return;
+      lastText = text;
+      tips.hidden = !text;
+      if (text) tips.textContent = text;
+    }
+    function toolName() {
+      try { return (k.editor._tool && k.editor._tool.constructor.name) || ""; } catch { return ""; }
+    }
+    function defaultTip() {
+      const t = toolName();
+      if (/^BondTool/.test(t)) return "드래그 = 결합 그리기 · Alt = 자유 각도/길이 · 이중결합 재클릭 = 선 위치 순환";
+      if (/^AtomTool/.test(t)) return "클릭 = 원자 · 원자에서 드래그 = 결합 뻗기 (Alt = 자유)";
+      if (/^SelectTool/.test(t)) return "스페이스 = 마지막 분자 선택 · 말단 원자 드래그 = 결합 회전 (∠/↔ 토글, Alt = 자유)";
+      if (/^SGroupTool/.test(t)) return "선택하면 바로 괄호+n 이 붙습니다 · n 수정은 괄호 더블클릭";
+      return "";
+    }
+    doc.addEventListener("mousemove", (e) => {
+      const now = Date.now();
+      if (now - lastAt < 120) return;
+      lastAt = now;
+      let ci = null;
+      try { ci = k.editor.findItem(e, ["atoms", "bonds"], null); } catch { /* 무시 */ }
+      if (ci && ci.map === "bonds") {
+        setTip("1/2/3 = 단일/이중/삼중 · W = 쐐기 · B = 굵게 · / = 속성 · 더블클릭 = 상세");
+      } else if (ci && ci.map === "atoms") {
+        setTip("원소키(C/N/O/Si…) = 치환 · 더블클릭 = 라벨 입력 · 말단 드래그 = 회전 (Alt = 자유)");
+      } else {
+        setTip(defaultTip());
+      }
+    });
+    doc.addEventListener("mouseleave", () => setTip(""));
+    setTip(defaultTip());
+  }
 
   let recoveryDone = false;
   async function offerRecovery(k) {
@@ -1029,6 +1183,7 @@
         setupCanvasContextMenu(frame, k);   // 빈 캔버스 우클릭 → 주기율표 팝업
         armMolaNotationStatus(k);   // 결합 도구의 표기 순환/토글 알림 → 상태줄
         syncSnapToggles();          // 드래그 스냅 토글 버튼 활성화 + 현재 옵션 반영
+        armEditorTips(frame, k);    // 우하단 실시간 팁(호버 대상별 단축키 힌트)
         resolve(k);
       };
       const fail = (why) => {

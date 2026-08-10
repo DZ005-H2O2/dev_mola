@@ -1052,6 +1052,11 @@
       closeFormatMenu();
     }
   });
+  // 모든 팝업은 ESC 로 닫힌다(사용자 지시) — 주기율표 패널/팝업은 기존
+  // handleGlobalEscape 가 담당하고, 형식 메뉴는 여기서.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && formatMenuEl) closeFormatMenu();
+  });
   copyImageMenuBtn.addEventListener("click", () => {
     if (formatMenuEl) { closeFormatMenu(); return; }
     openFormatMenu(copyImageMenuBtn, COPY_FORMATS, "molaCopyFormat", copyImage);
@@ -1184,6 +1189,15 @@
         armMolaNotationStatus(k);   // 결합 도구의 표기 순환/토글 알림 → 상태줄
         syncSnapToggles();          // 드래그 스냅 토글 버튼 활성화 + 현재 옵션 반영
         armEditorTips(frame, k);    // 우하단 실시간 팁(호버 대상별 단축키 힌트)
+        // Ctrl+C/X 완료 알림 — 포크 cliparea 가 성공 시 iframe window 에
+        // 'copyOrCutComplete' 를 쏜다(상류 e2e 훅 — 리스너가 없어 지금까지
+        // 무음이었다). 휘발성 상태줄(2.5초)로 "복사됨"을 보여준다.
+        try {
+          frame.contentWindow.addEventListener("copyOrCutComplete", () => {
+            const st = document.getElementById("editorStatus");
+            if (st) flashSaveStatus(st, "클립보드에 복사했습니다 (그림 포함).");
+          });
+        } catch { /* 접근 불가 — 알림 없이 진행 */ }
         resolve(k);
       };
       const fail = (why) => {
@@ -1313,20 +1327,27 @@
   function molaNotationLossNotice(k) {
     let bold = 0;
     let side = 0;
+    let bracketCharge = 0;
     try {
-      const bonds = k.editor.render.ctab.molecule.bonds;
-      bonds.forEach((bond) => {
+      const molecule = k.editor.render.ctab.molecule;
+      molecule.bonds.forEach((bond) => {
         if (bond.molaBoldBond) bold += 1;
         // 0(대칭)이 유효값이라 truthy 검사를 쓰면 안 된다
         if (bond.molaDoubleBondSide !== null && bond.molaDoubleBondSide !== undefined) side += 1;
       });
+      // 괄호 전하(SRU S-group 의 molaBracketCharge)도 에디터 전용 장식 —
+      // MOL V2000 에 자리가 없어 뷰어로는 안 넘어간다.
+      molecule.sgroups.forEach((sg) => {
+        if (sg && sg.data && Number(sg.data.molaBracketCharge)) bracketCharge += 1;
+      });
     } catch {
       return "";   // 내부 구조가 바뀌어도 보내기 자체는 막지 않는다
     }
-    if (!bold && !side) return "";
+    if (!bold && !side && !bracketCharge) return "";
     const what = [];
     if (bold) what.push("굵은 결합");
     if (side) what.push("이중결합 선 위치");
+    if (bracketCharge) what.push("괄호 전하");
     // "표기는" 으로 받아 조사 문제를 피한다("결합은" / "위치는" 이 갈린다)
     return what.join("·") + " 표기는 뷰어와 molfile 에 담기지 않아 사라집니다 — 그림 그대로 남기려면 SVG/PNG 로 저장하세요.";
   }

@@ -30,6 +30,15 @@
     // 줄로 대체했다(주기율표 패널 참고). period-table(진짜 118원소 주기율표)
     // 과는 별개 팝업이라 이건 숨겨도 주기율표 기능에는 영향이 없다.
     "extended-table",
+    // R-group 도구 3종 + 부모 드롭다운 — 사용자가 "안 쓸 것 같다"고 제거 결정
+    // (2026-08-10). 하위 3개가 전부 숨겨지면 부모 버튼(rgroup)도 자동으로
+    // 사라지지만(ToolbarMultiToolItem 의 allInnerItemsHidden) 명시적으로 넷 다
+    // 나열한다. 숨기면 Mod+R 계열 단축키도 함께 비활성화된다(hotkeys.ts 의
+    // isActionDisabledOrHidden). 되돌리려면 이 4줄만 지우면 된다.
+    "rgroup",
+    "rgroup-label",
+    "rgroup-fragment",
+    "rgroup-attpoints",
   ];
   const EDITOR_SRC =
     "assets/editor/index.html?hiddenControls=" + HIDDEN_CONTROLS.join(",");
@@ -68,6 +77,10 @@
     '<div class="editbar">' +
     '  <button id="sendToViewerBtn" class="ghost" type="button">← 뷰어로 보내기</button>' +
     '  <div class="editbar-actions">' +
+    '    <button id="snapAngleBtn" class="ghost snap-toggle" type="button" aria-pressed="true"' +
+    '            title="말단 원자 드래그 시 각도를 스텝(기본 15°)에 딸깍 맞춤. 드래그 중 Alt = 임시 해제">∠ 딸깍</button>' +
+    '    <button id="snapLengthBtn" class="ghost snap-toggle" type="button" aria-pressed="true"' +
+    '            title="말단 원자 드래그 시 결합 길이를 유지. 드래그 중 Alt = 임시 해제">↔ 길이고정</button>' +
     '    <button id="periodicToggleBtn" class="ghost" type="button" aria-pressed="false">주기율표</button>' +
     '    <button id="copyImageBtn" class="ghost" type="button" disabled>📋 그림 복사</button>' +
     '    <button id="savePngBtn" class="ghost" type="button" disabled>PNG 저장</button>' +
@@ -158,6 +171,41 @@
       });
     } catch { /* 구독 실패 — 임시저장 없이 진행 */ }
   }
+
+  // ── 드래그 스냅 토글 (∠ 딸깍 / ↔ 길이고정) ──────────────────────
+  // 에디터 옵션(render.options.molaSnapAngle/molaSnapLength)을 같은 출처
+  // contentWindow 직접 접근으로 뒤집는다(이 프로젝트의 확립된 관례 — postMessage
+  // 아님). 렌더 재실행은 불필요하다: select 도구가 드래그하는 순간에 옵션을
+  // 읽는다. 같은 옵션이 에디터 Settings(General 탭)에도 있다 — 거기서 바꾸면
+  // 버튼 상태는 다음 동기화 시점(에디터 재진입·버튼 클릭)에 따라온다.
+  // 기본값은 포크 options-schema 의 default(true) — 버튼 aria-pressed 초기값과
+  // 맞춰져 있고, 에디터가 뜨기 전에는 비활성이다.
+  const SNAP_TOGGLES = [
+    { btnId: "snapAngleBtn", opt: "molaSnapAngle" },
+    { btnId: "snapLengthBtn", opt: "molaSnapLength" },
+  ];
+  function snapOptions() {
+    try { return ui.ketcher ? ui.ketcher.editor.render.options : null; } catch { return null; }
+  }
+  function syncSnapToggles() {
+    const opts = snapOptions();
+    SNAP_TOGGLES.forEach(({ btnId, opt }) => {
+      const b = document.getElementById(btnId);
+      if (!b) return;
+      b.disabled = !opts;
+      if (opts) b.setAttribute("aria-pressed", String(opts[opt] !== false));
+    });
+  }
+  SNAP_TOGGLES.forEach(({ btnId, opt }) => {
+    const b = document.getElementById(btnId);
+    b.disabled = true;   // 에디터 준비 전
+    b.addEventListener("click", () => {
+      const opts = snapOptions();
+      if (!opts) return;
+      opts[opt] = opts[opt] === false;   // undefined(기본 켬)/true → false, false → true
+      syncSnapToggles();
+    });
+  });
 
   // ── 저장 버튼 바 (그림 복사·PNG·SVG·작업본) ──────────────────────
   // 캔버스가 비면 generateImage()가 던지므로(Task 1) 버튼을 선제적으로 비활성화한다.
@@ -261,10 +309,15 @@
   }
   injectTelexFont();
 
-  // 자주 쓰는 원소 — 반도체 식각·세정 도면 기준 순서(표준 원자번호 순이 아니다):
-  // Si·Ge(식각/세정 대상 반도체), Ti·Al(박막·배선 금속),
-  // N·O·F·Cl·S·P(플라즈마 식각·세정 가스 계열의 헤테로 원자), C·H(유기 골격).
-  const FREQUENT_ELEMENTS = ["Si", "Ge", "Ti", "Al", "N", "O", "F", "Cl", "S", "P", "C", "H"];
+  // 자주 쓰는 원소 — 반도체 식각·세정 도면 기준 순서(표준 원자번호 순이 아니다).
+  // 두 줄로 감기는 flex 줄(.pt-frequent)이라 개수는 자유:
+  // 1줄째 금속·반도체 — Si·Ge(반도체), Ti·Al(배선·박막), W·Cu·Co·Ta(배선·배리어),
+  //   Hf·Zr(high-k), Mo·Ru(차세대 배선)
+  // 2줄째 비금속 — B(도핑), N·O·F·Cl·Br·S·P(식각·세정 가스 헤테로 원자), C·H(유기 골격)
+  const FREQUENT_ELEMENTS = [
+    "Si", "Ge", "Ti", "Al", "W", "Cu", "Co", "Ta", "Hf", "Zr", "Mo", "Ru",
+    "B", "N", "O", "F", "Cl", "Br", "S", "P", "C", "H",
+  ];
 
   // 전체 주기율표(18족 표준 배치) — 원자번호 1~118. 란타넘(57~71)·악티넘(89~103)은
   // IUPAC 관용대로 아래 두 줄로 분리해 표를 컴팩트하게 유지한다. 외부 의존
@@ -975,6 +1028,7 @@
         updateSaveButtonsState();   // 새 에디터는 보통 빈 캔버스로 시작 — 버튼 비활성화 반영
         setupCanvasContextMenu(frame, k);   // 빈 캔버스 우클릭 → 주기율표 팝업
         armMolaNotationStatus(k);   // 결합 도구의 표기 순환/토글 알림 → 상태줄
+        syncSnapToggles();          // 드래그 스냅 토글 버튼 활성화 + 현재 옵션 반영
         resolve(k);
       };
       const fail = (why) => {

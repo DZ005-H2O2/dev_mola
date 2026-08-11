@@ -47,18 +47,8 @@ button.ghost:disabled { opacity: .45; cursor: default; }
 }
 .editorwrap .editbar-actions .ghost[aria-pressed="true"]:hover { background: var(--accent-2); }
 
-/* ── 빠른 설정 토글 묶음(∠ 각도 스냅 · ↔ 길이 고정) ──────────────────
-   "설정"이지 "액션"이 아니므로 큰 ghost 버튼들과 구분되는 작은 정사각
-   아이콘 버튼 + 공용 테두리 상자. 켜짐 = accent 채움. */
-.editbar-quick { display: flex; gap: 3px; padding: 3px;
-  border: 1px solid var(--line); border-radius: var(--r-ctrl); background: #fff; }
-.quick-toggle { width: 30px; height: 30px; padding: 0; font-size: 15px; font-weight: 700;
-  line-height: 1; border-radius: 7px; border: 1px solid transparent;
-  background: transparent; color: var(--muted); cursor: pointer; }
-.quick-toggle:hover { background: var(--accent-soft); color: var(--accent-2); }
-.quick-toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-.quick-toggle[aria-pressed="true"]:hover { background: var(--accent-2); }
-.quick-toggle:disabled { opacity: .4; cursor: default; }
+/* (빠른 설정 토글 ∠/↔ 은 에디터 상단 툴바로 이전 — 2026-08-11, 포크
+   MolaQuickToggles. 스타일도 함께 제거.) */
 
 /* ── 스플릿 버튼(그림 복사 ▾ / 그림 저장 ▾) + 형식 메뉴 ─────────────── */
 .split-btn { display: inline-flex; }
@@ -73,13 +63,14 @@ button.ghost:disabled { opacity: .45; cursor: default; }
   color: var(--ink, #14202e); cursor: pointer; }
 .format-menu button:hover { background: var(--accent-soft); color: var(--accent-2); }
 
-/* ── 실시간 팁(우하단) ─────────────────────────────────────────────────
+/* ── 실시간 팁(좌하단) ─────────────────────────────────────────────────
    호버 대상·활성 도구에 따라 단축키 힌트를 보여준다. 캔버스 조작을 막지
-   않게 pointer-events 없음. 글은 한 줄, 어두운 반투명 칩. */
-.editor-tips { position: absolute; right: 12px; bottom: 10px; z-index: 45;
-  max-width: 70%; padding: 6px 11px; pointer-events: none;
-  font-family: var(--mono); font-size: 11px; line-height: 1.5; color: #eef3f9;
-  background: rgba(20, 32, 46, .82); border-radius: 8px; }
+   않게 pointer-events 없음. 글은 한 줄, 어두운 반투명 칩.
+   [2026-08-11] 우하단 → 좌하단 + 글씨 확대(사용자 요청 "잘 보이도록"). */
+.editor-tips { position: absolute; left: 12px; bottom: 10px; z-index: 45;
+  max-width: 80%; padding: 8px 13px; pointer-events: none;
+  font-family: var(--mono); font-size: 13px; line-height: 1.55; color: #eef3f9;
+  background: rgba(20, 32, 46, .84); border-radius: 9px; }
 
 /* ── 주기율표 팝업(반도체 강조판) ─────────────────────────────────────
    사용자 업로드 semiconductor_periodic_table_desktop_v5.html 를 팝업으로

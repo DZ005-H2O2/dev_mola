@@ -79,14 +79,8 @@
   editorWrap.innerHTML =
     '<div class="editbar">' +
     '  <button id="sendToViewerBtn" class="ghost" type="button">← 뷰어로 보내기</button>' +
-    // 빠른 토글 묶음 — "설정"이지 "액션"이 아니므로 큰 버튼들과 시각적으로 분리
-    // (테두리 상자 + 정사각 아이콘 버튼). 자주 쓰는 토글이 늘면 여기에 추가.
-    '  <div class="editbar-quick" role="group" aria-label="빠른 설정 토글">' +
-    '    <button id="snapAngleBtn" class="quick-toggle" type="button" aria-pressed="true"' +
-    '            title="각도 스냅 — 그리기·드래그 회전을 15° 단위로 딸깍 (드래그 중 Alt = 임시 해제)">∠</button>' +
-    '    <button id="snapLengthBtn" class="quick-toggle" type="button" aria-pressed="true"' +
-    '            title="길이 고정 — 그릴 땐 표준 결합 길이, 드래그 회전 땐 원래 길이 유지 (드래그 중 Alt = 임시 해제)">↔</button>' +
-    "  </div>" +
+    // 스냅 토글(∠/↔)은 에디터 상단 툴바(3D 옆, 포크 MolaQuickToggles)로
+    // 이전했다(사용자 요청 2026-08-11) — 부모 버튼 제거.
     '  <div class="editbar-actions">' +
     '    <span class="split-btn">' +
     '      <button id="copyImageBtn" class="ghost" type="button" disabled>📋 그림 복사</button>' +
@@ -184,40 +178,7 @@
     } catch { /* 구독 실패 — 임시저장 없이 진행 */ }
   }
 
-  // ── 드래그 스냅 토글 (∠ 딸깍 / ↔ 길이고정) ──────────────────────
-  // 에디터 옵션(render.options.molaSnapAngle/molaSnapLength)을 같은 출처
-  // contentWindow 직접 접근으로 뒤집는다(이 프로젝트의 확립된 관례 — postMessage
-  // 아님). 렌더 재실행은 불필요하다: select 도구가 드래그하는 순간에 옵션을
-  // 읽는다. 같은 옵션이 에디터 Settings(General 탭)에도 있다 — 거기서 바꾸면
-  // 버튼 상태는 다음 동기화 시점(에디터 재진입·버튼 클릭)에 따라온다.
-  // 기본값은 포크 options-schema 의 default(true) — 버튼 aria-pressed 초기값과
-  // 맞춰져 있고, 에디터가 뜨기 전에는 비활성이다.
-  const SNAP_TOGGLES = [
-    { btnId: "snapAngleBtn", opt: "molaSnapAngle" },
-    { btnId: "snapLengthBtn", opt: "molaSnapLength" },
-  ];
-  function snapOptions() {
-    try { return ui.ketcher ? ui.ketcher.editor.render.options : null; } catch { return null; }
-  }
-  function syncSnapToggles() {
-    const opts = snapOptions();
-    SNAP_TOGGLES.forEach(({ btnId, opt }) => {
-      const b = document.getElementById(btnId);
-      if (!b) return;
-      b.disabled = !opts;
-      if (opts) b.setAttribute("aria-pressed", String(opts[opt] !== false));
-    });
-  }
-  SNAP_TOGGLES.forEach(({ btnId, opt }) => {
-    const b = document.getElementById(btnId);
-    b.disabled = true;   // 에디터 준비 전
-    b.addEventListener("click", () => {
-      const opts = snapOptions();
-      if (!opts) return;
-      opts[opt] = opts[opt] === false;   // undefined(기본 켬)/true → false, false → true
-      syncSnapToggles();
-    });
-  });
+  // (스냅 토글 배선은 포크 MolaQuickToggles 로 이전 — 2026-08-11)
 
   // ── 저장 버튼 바 (그림 복사 ▾ · 그림 저장 ▾) ─────────────────────
   // 사용자 결정(2026-08-10): 버튼은 두 개만 — 복사(기본 SVG)·저장(기본 PNG).
@@ -1029,9 +990,21 @@
   // png/text/html) ① 일단 svg mime 을 시도하고(미래 브라우저 대비, 실패는 즉시
   // TypeError) ② text/html(인라인 <svg>) + image/png 동시 탑재로 폴백한다 —
   // PowerPoint 등은 HTML 조각이나 PNG 중 지원하는 쪽을 집는다.
+  // 그림 배경 — 기본 투명(사용자 결정 2026-08-11). 톱니 설정(General → "그림
+  // 복사·저장 배경", 포크 options-schema molaImageBg)에서 흰색으로 바꿀 수 있다.
+  // generateImage 에 'transparent' 를 주면 배경 rect 자체가 빠져 SVG·PNG 모두
+  // 투명이 된다(포크 ketcher.ts 가 'transparent' → null 로 변환 — null 을 직접
+  // 주면 ?? 폴백이 흰색으로 되살리므로 문자열 규약을 쓴다).
+  function imageBg(k) {
+    try {
+      return k.editor.render.options.molaImageBg === "white" ? "#ffffff" : "transparent";
+    } catch { return "transparent"; }
+  }
+
   async function copyImage(k, st, format) {
+    const backgroundColor = imageBg(k);
     if (format === "png") {
-      const imagePromise = k.generateImage("", { outputFormat: "png" });
+      const imagePromise = k.generateImage("", { outputFormat: "png", backgroundColor });
       try {
         await navigator.clipboard.write([
           new ClipboardItem({ "image/png": imagePromise }),
@@ -1053,8 +1026,8 @@
       return;
     }
     // SVG 모드
-    const svgPromise = k.generateImage("", { outputFormat: "svg" });
-    const pngPromise = k.generateImage("", { outputFormat: "png" });
+    const svgPromise = k.generateImage("", { outputFormat: "svg", backgroundColor });
+    const pngPromise = k.generateImage("", { outputFormat: "png", backgroundColor });
     try {
       await navigator.clipboard.write([
         new ClipboardItem({ "image/svg+xml": svgPromise }),
@@ -1083,7 +1056,7 @@
       const ket = await k.getKet();
       downloadBlob(new Blob([ket], { type: "application/json" }), `그린_구조_${saveTimestamp()}.ket`);
     } else {
-      const blob = await k.generateImage("", { outputFormat: format });
+      const blob = await k.generateImage("", { outputFormat: format, backgroundColor: imageBg(k) });
       downloadBlob(blob, `그린_구조_${saveTimestamp()}.${format}`);
     }
     flashSaveStatus(st, `${FORMAT_LABELS[format]} 저장했습니다.`);
@@ -1167,7 +1140,7 @@
       const t = toolName();
       if (/^BondTool/.test(t)) return "드래그 = 결합 그리기 · Alt = 자유 각도/길이 · 이중결합 재클릭 = 선 위치 순환";
       if (/^AtomTool/.test(t)) return "클릭 = 원자 · 원자에서 드래그 = 결합 뻗기 (Alt = 자유)";
-      if (/^SelectTool/.test(t)) return "스페이스 = 마지막 분자 선택 · 말단 원자 드래그 = 결합 회전 (∠/↔ 토글, Alt = 자유)";
+      if (/^SelectTool/.test(t)) return "우클릭 = 주기율표 · 우클릭 드래그 = 화면 이동 · 스페이스 = 마지막 분자 선택 · 말단 드래그 = 회전 (Alt = 자유)";
       if (/^SGroupTool/.test(t)) return "선택하면 바로 괄호+n 이 붙습니다 · n 수정은 괄호 더블클릭";
       return "";
     }
@@ -1264,8 +1237,7 @@
         updateSaveButtonsState();   // 새 에디터는 보통 빈 캔버스로 시작 — 버튼 비활성화 반영
         setupCanvasContextMenu(frame, k);   // 빈 캔버스 우클릭 → 주기율표 팝업
         armMolaNotationStatus(k);   // 결합 도구의 표기 순환/토글 알림 → 상태줄
-        syncSnapToggles();          // 드래그 스냅 토글 버튼 활성화 + 현재 옵션 반영
-        armEditorTips(frame, k);    // 우하단 실시간 팁(호버 대상별 단축키 힌트)
+        armEditorTips(frame, k);    // 좌하단 실시간 팁(호버 대상별 단축키 힌트)
         // Ctrl+C/X 완료 알림 — 포크 cliparea 가 성공 시 iframe window 에
         // 'copyOrCutComplete' 를 쏜다(상류 e2e 훅 — 리스너가 없어 지금까지
         // 무음이었다). 휘발성 상태줄(2.5초)로 "복사됨"을 보여준다.

@@ -2271,7 +2271,7 @@
           // 색은 style이 아니라 fill='#RRGGBB' 속성으로 들어있다
           const fm = attrs.match(/fill='(#[0-9A-Fa-f]{6})'/) || attrs.match(/fill:(#[0-9A-Fa-f]{6})/);
           if (!fm) return mt;
-          return `<path${attrs} stroke='${fm[1]}' stroke-width='0.85' stroke-linejoin='round'/>`;
+          return `<path${attrs} stroke='${fm[1]}' stroke-width='0.85' stroke-linejoin='round' stroke-linecap='round'/>`;
         });
       }
 

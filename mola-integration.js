@@ -102,7 +102,6 @@
     '  <span class="estatus" id="editorStatus"></span>' +
     "</div>" +
     '<div class="frame-slot" id="editorFrameSlot">' +
-    '  <div class="periodic-panel" id="periodicPanel" hidden></div>' +
     '  <div class="editor-tips" id="editorTips" hidden></div>' +
     '  <div class="frame-msg" id="editorFrameMsg">에디터를 불러오는 중입니다…</div>' +
     "</div>";
@@ -343,48 +342,141 @@
   }
   injectTelexFont();
 
-  // 자주 쓰는 원소 — 반도체 식각·세정 도면 기준 순서(표준 원자번호 순이 아니다).
-  // 두 줄로 감기는 flex 줄(.pt-frequent)이라 개수는 자유:
-  // 1줄째 금속·반도체 — Si·Ge(반도체), Ti·Al(배선·박막), W·Cu·Co·Ta(배선·배리어),
-  //   Hf·Zr(high-k), Mo·Ru(차세대 배선)
-  // 2줄째 비금속 — B(도핑), N·O·F·Cl·Br·S·P(식각·세정 가스 헤테로 원자), C·H(유기 골격)
-  const FREQUENT_ELEMENTS = [
-    "Si", "Ge", "Ti", "Al", "W", "Cu", "Co", "Ta", "Hf", "Zr", "Mo", "Ru",
-    "B", "N", "O", "F", "Cl", "Br", "S", "P", "C", "H",
+  // ── 주기율표 팝업 데이터(반도체 강조판) ────────────────────────────
+  // 사용자 업로드 semiconductor_periodic_table_desktop_v5.html(팝업 시안 v1
+  // 승인, 2026-08-11)에서 이식 — 원소 118종의 18족 표 좌표(row/col)·분류·
+  // 대표 반도체 역할·헤드라인. details(용도 상세 목록)는 팝업 정보줄에서
+  // 쓰지 않아 뺐다. f-블록은 원본 좌표(9·10행)를 그대로 두고 렌더 때
+  // 8·9행으로 당겨 붙인다(팝업 높이 절약 — 시안 v1 그대로).
+  const SEMI_ELEMENTS = [
+    {"z":1,"symbol":"H","name":"Hydrogen","nameKo":"수소","mass":"1.008","row":1,"col":1,"category":"nonmetal","categoryKo":"비금속","roles":["CLEAN","GAS","PASS"],"headline":"환원·패시베이션"},
+    {"z":2,"symbol":"He","name":"Helium","nameKo":"헬륨","mass":"4.0026","row":1,"col":18,"category":"noble","categoryKo":"비활성 기체","roles":["GAS"],"headline":"캐리어·퍼지·냉각"},
+    {"z":3,"symbol":"Li","name":"Lithium","nameKo":"리튬","mass":"6.94","row":2,"col":1,"category":"alkali","categoryKo":"알칼리 금속","roles":["CONTAM"],"headline":"알칼리 오염 주의"},
+    {"z":4,"symbol":"Be","name":"Beryllium","nameKo":"베릴륨","mass":"9.0122","row":2,"col":2,"category":"alkaline","categoryKo":"알칼리 토금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":5,"symbol":"B","name":"Boron","nameKo":"붕소","mass":"10.81","row":2,"col":13,"category":"metalloid","categoryKo":"준금속","roles":["DOP","DEP"],"headline":"대표 p-type 도펀트"},
+    {"z":6,"symbol":"C","name":"Carbon","nameKo":"탄소","mass":"12.011","row":2,"col":14,"category":"nonmetal","categoryKo":"비금속","roles":["MASK","FILM"],"headline":"하드마스크·SiC 계열"},
+    {"z":7,"symbol":"N","name":"Nitrogen","nameKo":"질소","mass":"14.007","row":2,"col":15,"category":"nonmetal","categoryKo":"비금속","roles":["DEP","GAS","FILM"],"headline":"질화막·퍼지"},
+    {"z":8,"symbol":"O","name":"Oxygen","nameKo":"산소","mass":"15.999","row":2,"col":16,"category":"nonmetal","categoryKo":"비금속","roles":["OX","CLEAN","FILM"],"headline":"산화·애싱"},
+    {"z":9,"symbol":"F","name":"Fluorine","nameKo":"플루오린","mass":"18.998","row":2,"col":17,"category":"halogen","categoryKo":"할로젠","roles":["ETCH","CLEAN"],"headline":"Si계 식각의 핵심"},
+    {"z":10,"symbol":"Ne","name":"Neon","nameKo":"네온","mass":"20.180","row":2,"col":18,"category":"noble","categoryKo":"비활성 기체","roles":["LITHO","GAS"],"headline":"레이저·불활성 가스"},
+    {"z":11,"symbol":"Na","name":"Sodium","nameKo":"나트륨","mass":"22.990","row":3,"col":1,"category":"alkali","categoryKo":"알칼리 금속","roles":["CONTAM"],"headline":"대표 mobile-ion 오염"},
+    {"z":12,"symbol":"Mg","name":"Magnesium","nameKo":"마그네슘","mass":"24.305","row":3,"col":2,"category":"alkaline","categoryKo":"알칼리 토금속","roles":["DOP","COMPOUND"],"headline":"GaN p-type 도핑"},
+    {"z":13,"symbol":"Al","name":"Aluminium","nameKo":"알루미늄","mass":"26.982","row":3,"col":13,"category":"post","categoryKo":"전이후 금속","roles":["METAL","FILM","COMPOUND"],"headline":"배선·Al₂O₃·III–V"},
+    {"z":14,"symbol":"Si","name":"Silicon","nameKo":"규소","mass":"28.085","row":3,"col":14,"category":"metalloid","categoryKo":"준금속","roles":["WAFER","FILM"],"headline":"반도체의 기준 재료"},
+    {"z":15,"symbol":"P","name":"Phosphorus","nameKo":"인","mass":"30.974","row":3,"col":15,"category":"nonmetal","categoryKo":"비금속","roles":["DOP","FILM"],"headline":"대표 n-type 도펀트"},
+    {"z":16,"symbol":"S","name":"Sulfur","nameKo":"황","mass":"32.06","row":3,"col":16,"category":"nonmetal","categoryKo":"비금속","roles":["WET","COMPOUND"],"headline":"황산·황화물"},
+    {"z":17,"symbol":"Cl","name":"Chlorine","nameKo":"염소","mass":"35.45","row":3,"col":17,"category":"halogen","categoryKo":"할로젠","roles":["ETCH","CLEAN"],"headline":"금속·Si 계열 식각"},
+    {"z":18,"symbol":"Ar","name":"Argon","nameKo":"아르곤","mass":"39.948","row":3,"col":18,"category":"noble","categoryKo":"비활성 기체","roles":["GAS","ETCH","DEP"],"headline":"스퍼터·플라즈마"},
+    {"z":19,"symbol":"K","name":"Potassium","nameKo":"칼륨","mass":"39.098","row":4,"col":1,"category":"alkali","categoryKo":"알칼리 금속","roles":["CONTAM"],"headline":"알칼리 오염 주의"},
+    {"z":20,"symbol":"Ca","name":"Calcium","nameKo":"칼슘","mass":"40.078","row":4,"col":2,"category":"alkaline","categoryKo":"알칼리 토금속","roles":["CONTAM"],"headline":"금속 오염 관리"},
+    {"z":21,"symbol":"Sc","name":"Scandium","nameKo":"스칸듐","mass":"44.956","row":4,"col":3,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":22,"symbol":"Ti","name":"Titanium","nameKo":"티타늄","mass":"47.867","row":4,"col":4,"category":"transition","categoryKo":"전이 금속","roles":["BARR","METAL","DEP"],"headline":"Ti/TiN barrier·liner"},
+    {"z":23,"symbol":"V","name":"Vanadium","nameKo":"바나듐","mass":"50.942","row":4,"col":5,"category":"transition","categoryKo":"전이 금속","roles":["METAL","COMPOUND"],"headline":"특수 금속·질화물"},
+    {"z":24,"symbol":"Cr","name":"Chromium","nameKo":"크로뮴","mass":"51.996","row":4,"col":6,"category":"transition","categoryKo":"전이 금속","roles":["MASK","METAL","CONTAM"],"headline":"포토마스크·금속"},
+    {"z":25,"symbol":"Mn","name":"Manganese","nameKo":"망가니즈","mass":"54.938","row":4,"col":7,"category":"transition","categoryKo":"전이 금속","roles":["CONTAM","METAL"],"headline":"금속 오염·특수 barrier"},
+    {"z":26,"symbol":"Fe","name":"Iron","nameKo":"철","mass":"55.845","row":4,"col":8,"category":"transition","categoryKo":"전이 금속","roles":["CONTAM"],"headline":"중요 금속 오염"},
+    {"z":27,"symbol":"Co","name":"Cobalt","nameKo":"코발트","mass":"58.933","row":4,"col":9,"category":"transition","categoryKo":"전이 금속","roles":["METAL","CONTACT"],"headline":"contact·silicide·배선"},
+    {"z":28,"symbol":"Ni","name":"Nickel","nameKo":"니켈","mass":"58.693","row":4,"col":10,"category":"transition","categoryKo":"전이 금속","roles":["CONTACT","METAL","CONTAM"],"headline":"NiSi contact"},
+    {"z":29,"symbol":"Cu","name":"Copper","nameKo":"구리","mass":"63.546","row":4,"col":11,"category":"transition","categoryKo":"전이 금속","roles":["WIRE","METAL","CONTAM"],"headline":"대표 BEOL 배선"},
+    {"z":30,"symbol":"Zn","name":"Zinc","nameKo":"아연","mass":"65.38","row":4,"col":12,"category":"transition","categoryKo":"전이 금속","roles":["COMPOUND","CONTAM"],"headline":"ZnO·화합물"},
+    {"z":31,"symbol":"Ga","name":"Gallium","nameKo":"갈륨","mass":"69.723","row":4,"col":13,"category":"post","categoryKo":"전이후 금속","roles":["COMPOUND","WAFER"],"headline":"GaAs·GaN 계열"},
+    {"z":32,"symbol":"Ge","name":"Germanium","nameKo":"저마늄","mass":"72.630","row":4,"col":14,"category":"metalloid","categoryKo":"준금속","roles":["WAFER","COMPOUND","ETCH"],"headline":"SiGe·Ge channel"},
+    {"z":33,"symbol":"As","name":"Arsenic","nameKo":"비소","mass":"74.922","row":4,"col":15,"category":"metalloid","categoryKo":"준금속","roles":["DOP","COMPOUND"],"headline":"n-type·GaAs"},
+    {"z":34,"symbol":"Se","name":"Selenium","nameKo":"셀레늄","mass":"78.971","row":4,"col":16,"category":"nonmetal","categoryKo":"비금속","roles":["COMPOUND"],"headline":"chalcogenide 재료"},
+    {"z":35,"symbol":"Br","name":"Bromine","nameKo":"브로민","mass":"79.904","row":4,"col":17,"category":"halogen","categoryKo":"할로젠","roles":["ETCH"],"headline":"HBr plasma 식각"},
+    {"z":36,"symbol":"Kr","name":"Krypton","nameKo":"크립톤","mass":"83.798","row":4,"col":18,"category":"noble","categoryKo":"비활성 기체","roles":["LITHO","GAS"],"headline":"KrF 리소그래피"},
+    {"z":37,"symbol":"Rb","name":"Rubidium","nameKo":"루비듐","mass":"85.468","row":5,"col":1,"category":"alkali","categoryKo":"알칼리 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":38,"symbol":"Sr","name":"Strontium","nameKo":"스트론튬","mass":"87.62","row":5,"col":2,"category":"alkaline","categoryKo":"알칼리 토금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":39,"symbol":"Y","name":"Yttrium","nameKo":"이트륨","mass":"88.906","row":5,"col":3,"category":"transition","categoryKo":"전이 금속","roles":["FILM"],"headline":"Y₂O₃계 고유전·보호막"},
+    {"z":40,"symbol":"Zr","name":"Zirconium","nameKo":"지르코늄","mass":"91.224","row":5,"col":4,"category":"transition","categoryKo":"전이 금속","roles":["FILM"],"headline":"ZrO₂ high-k"},
+    {"z":41,"symbol":"Nb","name":"Niobium","nameKo":"나이오븀","mass":"92.906","row":5,"col":5,"category":"transition","categoryKo":"전이 금속","roles":["METAL","COMPOUND"],"headline":"특수 전극·초전도"},
+    {"z":42,"symbol":"Mo","name":"Molybdenum","nameKo":"몰리브데넘","mass":"95.95","row":5,"col":6,"category":"transition","categoryKo":"전이 금속","roles":["METAL","COMPOUND","LITHO"],"headline":"금속·MoS₂·EUV"},
+    {"z":43,"symbol":"Tc","name":"Technetium","nameKo":"테크네튬","mass":"[98]","row":5,"col":7,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":44,"symbol":"Ru","name":"Ruthenium","nameKo":"루테늄","mass":"101.07","row":5,"col":8,"category":"transition","categoryKo":"전이 금속","roles":["WIRE","METAL"],"headline":"차세대 배선·contact"},
+    {"z":45,"symbol":"Rh","name":"Rhodium","nameKo":"로듐","mass":"102.91","row":5,"col":9,"category":"transition","categoryKo":"전이 금속","roles":["METAL"],"headline":"특수 전극"},
+    {"z":46,"symbol":"Pd","name":"Palladium","nameKo":"팔라듐","mass":"106.42","row":5,"col":10,"category":"transition","categoryKo":"전이 금속","roles":["METAL","SENSOR"],"headline":"전극·센서"},
+    {"z":47,"symbol":"Ag","name":"Silver","nameKo":"은","mass":"107.87","row":5,"col":11,"category":"transition","categoryKo":"전이 금속","roles":["WIRE","PKG"],"headline":"도전재·패키징"},
+    {"z":48,"symbol":"Cd","name":"Cadmium","nameKo":"카드뮴","mass":"112.41","row":5,"col":12,"category":"transition","categoryKo":"전이 금속","roles":["COMPOUND"],"headline":"II–VI 화합물"},
+    {"z":49,"symbol":"In","name":"Indium","nameKo":"인듐","mass":"114.82","row":5,"col":13,"category":"post","categoryKo":"전이후 금속","roles":["COMPOUND","FILM"],"headline":"InGaAs·ITO"},
+    {"z":50,"symbol":"Sn","name":"Tin","nameKo":"주석","mass":"118.71","row":5,"col":14,"category":"post","categoryKo":"전이후 금속","roles":["LITHO","PKG","FILM"],"headline":"EUV resist·패키징"},
+    {"z":51,"symbol":"Sb","name":"Antimony","nameKo":"안티모니","mass":"121.76","row":5,"col":15,"category":"metalloid","categoryKo":"준금속","roles":["DOP","COMPOUND"],"headline":"n-type·III–V"},
+    {"z":52,"symbol":"Te","name":"Tellurium","nameKo":"텔루륨","mass":"127.60","row":5,"col":16,"category":"metalloid","categoryKo":"준금속","roles":["MEM","COMPOUND"],"headline":"상변화·chalcogenide"},
+    {"z":53,"symbol":"I","name":"Iodine","nameKo":"아이오딘","mass":"126.90","row":5,"col":17,"category":"halogen","categoryKo":"할로젠","roles":["ETCH","PRECURSOR"],"headline":"특수 halogen chemistry"},
+    {"z":54,"symbol":"Xe","name":"Xenon","nameKo":"제논","mass":"131.29","row":5,"col":18,"category":"noble","categoryKo":"비활성 기체","roles":["ETCH","IMPLANT","GAS"],"headline":"XeF₂·ion"},
+    {"z":55,"symbol":"Cs","name":"Cesium","nameKo":"세슘","mass":"132.91","row":6,"col":1,"category":"alkali","categoryKo":"알칼리 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":56,"symbol":"Ba","name":"Barium","nameKo":"바륨","mass":"137.33","row":6,"col":2,"category":"alkaline","categoryKo":"알칼리 토금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":57,"symbol":"La","name":"Lanthanum","nameKo":"란타넘","mass":"138.91","row":9,"col":4,"category":"lanthanide","categoryKo":"란타넘족","roles":["FILM"],"headline":"high-k stack 보조"},
+    {"z":58,"symbol":"Ce","name":"Cerium","nameKo":"세륨","mass":"140.12","row":9,"col":5,"category":"lanthanide","categoryKo":"란타넘족","roles":["CMP","FILM"],"headline":"CMP·산화물"},
+    {"z":59,"symbol":"Pr","name":"Praseodymium","nameKo":"프라세오디뮴","mass":"140.91","row":9,"col":6,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":60,"symbol":"Nd","name":"Neodymium","nameKo":"네오디뮴","mass":"144.24","row":9,"col":7,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":61,"symbol":"Pm","name":"Promethium","nameKo":"프로메튬","mass":"[145]","row":9,"col":8,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":62,"symbol":"Sm","name":"Samarium","nameKo":"사마륨","mass":"150.36","row":9,"col":9,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":63,"symbol":"Eu","name":"Europium","nameKo":"유로퓸","mass":"151.96","row":9,"col":10,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":64,"symbol":"Gd","name":"Gadolinium","nameKo":"가돌리늄","mass":"157.25","row":9,"col":11,"category":"lanthanide","categoryKo":"란타넘족","roles":["FILM","MAG"],"headline":"고유전·자성 재료"},
+    {"z":65,"symbol":"Tb","name":"Terbium","nameKo":"터븀","mass":"158.93","row":9,"col":12,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":66,"symbol":"Dy","name":"Dysprosium","nameKo":"디스프로슘","mass":"162.50","row":9,"col":13,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":67,"symbol":"Ho","name":"Holmium","nameKo":"홀뮴","mass":"164.93","row":9,"col":14,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":68,"symbol":"Er","name":"Erbium","nameKo":"어븀","mass":"167.26","row":9,"col":15,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":69,"symbol":"Tm","name":"Thulium","nameKo":"툴륨","mass":"168.93","row":9,"col":16,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":70,"symbol":"Yb","name":"Ytterbium","nameKo":"이터븀","mass":"173.05","row":9,"col":17,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":71,"symbol":"Lu","name":"Lutetium","nameKo":"루테튬","mass":"174.97","row":9,"col":18,"category":"lanthanide","categoryKo":"란타넘족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":72,"symbol":"Hf","name":"Hafnium","nameKo":"하프늄","mass":"178.49","row":6,"col":4,"category":"transition","categoryKo":"전이 금속","roles":["FILM","GATE"],"headline":"HfO₂ high-k의 핵심"},
+    {"z":73,"symbol":"Ta","name":"Tantalum","nameKo":"탄탈럼","mass":"180.95","row":6,"col":5,"category":"transition","categoryKo":"전이 금속","roles":["BARR","METAL"],"headline":"Ta/TaN diffusion barrier"},
+    {"z":74,"symbol":"W","name":"Tungsten","nameKo":"텅스텐","mass":"183.84","row":6,"col":6,"category":"transition","categoryKo":"전이 금속","roles":["CONTACT","WIRE","METAL"],"headline":"contact·via·word line"},
+    {"z":75,"symbol":"Re","name":"Rhenium","nameKo":"레늄","mass":"186.21","row":6,"col":7,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":76,"symbol":"Os","name":"Osmium","nameKo":"오스뮴","mass":"190.23","row":6,"col":8,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":77,"symbol":"Ir","name":"Iridium","nameKo":"이리듐","mass":"192.22","row":6,"col":9,"category":"transition","categoryKo":"전이 금속","roles":["METAL","MEM"],"headline":"전극·MRAM"},
+    {"z":78,"symbol":"Pt","name":"Platinum","nameKo":"백금","mass":"195.08","row":6,"col":10,"category":"transition","categoryKo":"전이 금속","roles":["METAL","MEM"],"headline":"전극·실리사이드"},
+    {"z":79,"symbol":"Au","name":"Gold","nameKo":"금","mass":"196.97","row":6,"col":11,"category":"transition","categoryKo":"전이 금속","roles":["PKG","CONTAM"],"headline":"bonding·패키징 / Si 오염주의"},
+    {"z":80,"symbol":"Hg","name":"Mercury","nameKo":"수은","mass":"200.59","row":6,"col":12,"category":"transition","categoryKo":"전이 금속","roles":["CONTAM"],"headline":"유해 금속 오염"},
+    {"z":81,"symbol":"Tl","name":"Thallium","nameKo":"탈륨","mass":"204.38","row":6,"col":13,"category":"post","categoryKo":"전이후 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":82,"symbol":"Pb","name":"Lead","nameKo":"납","mass":"207.2","row":6,"col":14,"category":"post","categoryKo":"전이후 금속","roles":["PKG","CONTAM"],"headline":"legacy solder"},
+    {"z":83,"symbol":"Bi","name":"Bismuth","nameKo":"비스무트","mass":"208.98","row":6,"col":15,"category":"post","categoryKo":"전이후 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":84,"symbol":"Po","name":"Polonium","nameKo":"폴로늄","mass":"[209]","row":6,"col":16,"category":"post","categoryKo":"전이후 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":85,"symbol":"At","name":"Astatine","nameKo":"아스타틴","mass":"[210]","row":6,"col":17,"category":"halogen","categoryKo":"할로젠","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":86,"symbol":"Rn","name":"Radon","nameKo":"라돈","mass":"[222]","row":6,"col":18,"category":"noble","categoryKo":"비활성 기체","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":87,"symbol":"Fr","name":"Francium","nameKo":"프랑슘","mass":"[223]","row":7,"col":1,"category":"alkali","categoryKo":"알칼리 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":88,"symbol":"Ra","name":"Radium","nameKo":"라듐","mass":"[226]","row":7,"col":2,"category":"alkaline","categoryKo":"알칼리 토금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":89,"symbol":"Ac","name":"Actinium","nameKo":"악티늄","mass":"[227]","row":10,"col":4,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":90,"symbol":"Th","name":"Thorium","nameKo":"토륨","mass":"232.04","row":10,"col":5,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":91,"symbol":"Pa","name":"Protactinium","nameKo":"프로트악티늄","mass":"231.04","row":10,"col":6,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":92,"symbol":"U","name":"Uranium","nameKo":"우라늄","mass":"238.03","row":10,"col":7,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":93,"symbol":"Np","name":"Neptunium","nameKo":"넵투늄","mass":"[237]","row":10,"col":8,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":94,"symbol":"Pu","name":"Plutonium","nameKo":"플루토늄","mass":"[244]","row":10,"col":9,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":95,"symbol":"Am","name":"Americium","nameKo":"아메리슘","mass":"[243]","row":10,"col":10,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":96,"symbol":"Cm","name":"Curium","nameKo":"퀴륨","mass":"[247]","row":10,"col":11,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":97,"symbol":"Bk","name":"Berkelium","nameKo":"버클륨","mass":"[247]","row":10,"col":12,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":98,"symbol":"Cf","name":"Californium","nameKo":"캘리포늄","mass":"[251]","row":10,"col":13,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":99,"symbol":"Es","name":"Einsteinium","nameKo":"아인슈타이늄","mass":"[252]","row":10,"col":14,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":100,"symbol":"Fm","name":"Fermium","nameKo":"페르뮴","mass":"[257]","row":10,"col":15,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":101,"symbol":"Md","name":"Mendelevium","nameKo":"멘델레븀","mass":"[258]","row":10,"col":16,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":102,"symbol":"No","name":"Nobelium","nameKo":"노벨륨","mass":"[259]","row":10,"col":17,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":103,"symbol":"Lr","name":"Lawrencium","nameKo":"로렌슘","mass":"[266]","row":10,"col":18,"category":"actinide","categoryKo":"악티늄족","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":104,"symbol":"Rf","name":"Rutherfordium","nameKo":"러더포듐","mass":"[267]","row":7,"col":4,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":105,"symbol":"Db","name":"Dubnium","nameKo":"더브늄","mass":"[268]","row":7,"col":5,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":106,"symbol":"Sg","name":"Seaborgium","nameKo":"시보귬","mass":"[269]","row":7,"col":6,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":107,"symbol":"Bh","name":"Bohrium","nameKo":"보륨","mass":"[270]","row":7,"col":7,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":108,"symbol":"Hs","name":"Hassium","nameKo":"하슘","mass":"[277]","row":7,"col":8,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":109,"symbol":"Mt","name":"Meitnerium","nameKo":"마이트너륨","mass":"[278]","row":7,"col":9,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":110,"symbol":"Ds","name":"Darmstadtium","nameKo":"다름슈타튬","mass":"[281]","row":7,"col":10,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":111,"symbol":"Rg","name":"Roentgenium","nameKo":"뢴트게늄","mass":"[282]","row":7,"col":11,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":112,"symbol":"Cn","name":"Copernicium","nameKo":"코페르니슘","mass":"[285]","row":7,"col":12,"category":"transition","categoryKo":"전이 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":113,"symbol":"Nh","name":"Nihonium","nameKo":"니호늄","mass":"[286]","row":7,"col":13,"category":"post","categoryKo":"전이후 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":114,"symbol":"Fl","name":"Flerovium","nameKo":"플레로븀","mass":"[289]","row":7,"col":14,"category":"post","categoryKo":"전이후 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":115,"symbol":"Mc","name":"Moscovium","nameKo":"모스코븀","mass":"[290]","row":7,"col":15,"category":"post","categoryKo":"전이후 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":116,"symbol":"Lv","name":"Livermorium","nameKo":"리버모륨","mass":"[293]","row":7,"col":16,"category":"post","categoryKo":"전이후 금속","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":117,"symbol":"Ts","name":"Tennessine","nameKo":"테네신","mass":"[294]","row":7,"col":17,"category":"halogen","categoryKo":"할로젠","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
+    {"z":118,"symbol":"Og","name":"Oganesson","nameKo":"오가네손","mass":"[294]","row":7,"col":18,"category":"noble","categoryKo":"비활성 기체","roles":[],"headline":"일반적 CMOS 양산 핵심도 낮음"},
   ];
-
-  // 전체 주기율표(18족 표준 배치) — 원자번호 1~118. 란타넘(57~71)·악티넘(89~103)은
-  // IUPAC 관용대로 아래 두 줄로 분리해 표를 컴팩트하게 유지한다. 외부 의존
-  // 없이 이 파일 안에 하드코딩한다. (무결성: 1~118 정확히 한 번씩 등장 — 스크래치
-  // 스크립트로 검증함.)
-  const PT_MAIN = [
-    [["H", 1], null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, ["He", 2]],
-    [["Li", 3], ["Be", 4], null, null, null, null, null, null, null, null, null, null, ["B", 5], ["C", 6], ["N", 7], ["O", 8], ["F", 9], ["Ne", 10]],
-    [["Na", 11], ["Mg", 12], null, null, null, null, null, null, null, null, null, null, ["Al", 13], ["Si", 14], ["P", 15], ["S", 16], ["Cl", 17], ["Ar", 18]],
-    [["K", 19], ["Ca", 20], ["Sc", 21], ["Ti", 22], ["V", 23], ["Cr", 24], ["Mn", 25], ["Fe", 26], ["Co", 27], ["Ni", 28], ["Cu", 29], ["Zn", 30], ["Ga", 31], ["Ge", 32], ["As", 33], ["Se", 34], ["Br", 35], ["Kr", 36]],
-    [["Rb", 37], ["Sr", 38], ["Y", 39], ["Zr", 40], ["Nb", 41], ["Mo", 42], ["Tc", 43], ["Ru", 44], ["Rh", 45], ["Pd", 46], ["Ag", 47], ["Cd", 48], ["In", 49], ["Sn", 50], ["Sb", 51], ["Te", 52], ["I", 53], ["Xe", 54]],
-    [["Cs", 55], ["Ba", 56], { ph: "57–71" }, ["Hf", 72], ["Ta", 73], ["W", 74], ["Re", 75], ["Os", 76], ["Ir", 77], ["Pt", 78], ["Au", 79], ["Hg", 80], ["Tl", 81], ["Pb", 82], ["Bi", 83], ["Po", 84], ["At", 85], ["Rn", 86]],
-    [["Fr", 87], ["Ra", 88], { ph: "89–103" }, ["Rf", 104], ["Db", 105], ["Sg", 106], ["Bh", 107], ["Hs", 108], ["Mt", 109], ["Ds", 110], ["Rg", 111], ["Cn", 112], ["Nh", 113], ["Fl", 114], ["Mc", 115], ["Lv", 116], ["Ts", 117], ["Og", 118]],
-  ];
-  const PT_LANTHANIDES = [["La", 57], ["Ce", 58], ["Pr", 59], ["Nd", 60], ["Pm", 61], ["Sm", 62], ["Eu", 63], ["Gd", 64], ["Tb", 65], ["Dy", 66], ["Ho", 67], ["Er", 68], ["Tm", 69], ["Yb", 70], ["Lu", 71]];
-  const PT_ACTINIDES = [["Ac", 89], ["Th", 90], ["Pa", 91], ["U", 92], ["Np", 93], ["Pu", 94], ["Am", 95], ["Cm", 96], ["Bk", 97], ["Cf", 98], ["Es", 99], ["Fm", 100], ["Md", 101], ["No", 102], ["Lr", 103]];
-
-  // 원소 기호 → 잉크 색. index.html 의 2D/3D 렌더 팔레트(elementColors, 20종)와
-  // 맞춰 패널 색과 실제로 캔버스에 찍힐 원자 색이 일치하게 한다 — elementColors
-  // 는 index.html 인라인 <script> 의 top-level const라 이 파일(별도 <script src>,
-  // 뒤에 로드)에서도 같은 전역 스크립트 스코프로 그대로 보인다 — state/loadMolecule
-  // 등 기존 참조(파일 상단 주석)와 같은 패턴이라 새로 만든 규칙이 아니다.
-  //
-  // 목록에 없는(20종 밖) 원소의 기본색은 예전엔 var(--ink) 였다 — 패널이
-  // var(--panel) 등 테마 토큰을 쓰던 시절엔 배경도 같이 어두워져 괜찮았지만,
-  // 지금은 패널 배경을 항상 흰색으로 고정했으므로(위 CSS 주석 참고)
-  // var(--ink) 를 그대로 쓰면 다크모드에서 --ink 가 밝은 색(#eef3f9)이 되어
-  // 흰 배경 위에 거의 안 보이는 대비 사고가 난다(실제로 다크모드 스크린샷에서
-  // 발견함). 그래서 기본색도 라이트 테마 --ink 값을 그대로 리터럴로 고정한다.
-  const PT_DEFAULT_INK = "#14202e";
-  function elementInkColor(sym) {
-    return elementColors[sym] || PT_DEFAULT_INK;
-  }
+  // 역할 코드 → 표시 라벨(업로드본 그대로 — CONTAM 만 배지 색이 다르다).
+  const SEMI_ROLE_LABELS = {
+    CLEAN: "CLEAN", GAS: "GAS", PASS: "PASS", DOP: "DOP", DEP: "DEP",
+    MASK: "MASK", FILM: "FILM", OX: "OX", ETCH: "ETCH", LITHO: "LITHO",
+    CONTAM: "CONTAM", METAL: "METAL", COMPOUND: "III–V/COMP", WAFER: "WAFER",
+    WET: "WET", BARR: "BARRIER", CONTACT: "CONTACT", WIRE: "INTERCONNECT",
+    SENSOR: "SENSOR", PKG: "PKG", MEM: "MEMORY", IMPLANT: "IMPLANT",
+    PRECURSOR: "PRECURSOR", GATE: "GATE", CMP: "CMP", MAG: "MAG",
+  };
 
   // Sketcher 좌측 패널의 "A" 드롭다운에 해당하는 자리 — ET(extended-table,
   // 위에서 숨김) 34개 항목 중 실제로 자주 쓸 만한 5개만 골랐다. 클릭 시
@@ -404,146 +496,47 @@
 
   let currentAtomLabel = null;   // 마지막으로 고른 원소 — 패널·팝업 선택 표시 동기화용
 
-  function ptCellButton(sym, z, big) {
+  function sptFamilyVar(category) {
+    return "var(--spt-" + category + ")";
+  }
+
+  // 타일 — 번호·기호·영문명만. 질량·역할칩은 정보줄·툴팁으로 뺐다(시안 검토
+  // 결론: 48×56 타일에서 6px대 글자는 판독 불가).
+  function sptTile(el) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = big ? "pt-cell pt-cell-big" : "pt-cell";
-    b.dataset.ptEl = sym;
-    b.style.color = elementInkColor(sym);
-    b.title = z ? `${sym} (원자번호 ${z})` : sym;
-    const symEl = document.createElement("span");
-    symEl.className = "pt-sym";
-    symEl.textContent = sym;
-    b.appendChild(symEl);
-    if (!big && z) {
-      const zEl = document.createElement("sup");
-      zEl.className = "pt-z";
-      zEl.textContent = String(z);
-      b.appendChild(zEl);
-    }
-    b.addEventListener("click", () => selectElement(sym));
+    b.className = "spt-el";
+    b.dataset.ptEl = el.symbol;
+    b.style.setProperty("--family", sptFamilyVar(el.category));
+    b.style.gridColumn = String(el.col);
+    b.style.gridRow = String(el.row > 7 ? el.row - 1 : el.row); // f-블록 9·10→8·9
+    b.title = el.nameKo + " \u00b7 " + el.mass + " u \u2014 " + el.headline;
+    const z = document.createElement("span");
+    z.className = "spt-z";
+    z.textContent = String(el.z);
+    const sym = document.createElement("span");
+    sym.className = "spt-sym";
+    sym.textContent = el.symbol;
+    const nm = document.createElement("span");
+    nm.className = "spt-nm";
+    nm.textContent = el.name;
+    b.append(z, sym, nm);
+    b.addEventListener("mouseenter", () => sptShowInfo(el));
+    b.addEventListener("click", () => selectElement(el.symbol));
     return b;
   }
 
-  function ptPlaceholder(label) {
-    const d = document.createElement("div");
-    d.className = "pt-cell pt-ph";
-    d.textContent = label;
-    return d;
-  }
-
-  // "일반 원자" 줄 버튼 — 진짜 원소 버튼(ptCellButton)과 클릭 동작이 다르므로
-  // (label만이 아니라 {label,pseudo,type:'gen'} 전체를 넘겨야 한다) 별도
-  // 함수로 만든다. data-pt-el 은 그대로 붙여 syncPeriodicSelection() 의
-  // 선택 하이라이트 로직을 원소 버튼과 공유한다(심볼 충돌 없음 — A/Q/M/X/R
-  // 는 실제 원소 기호가 아니다).
-  function ptGenericButton(sym, title) {
+  // "일반 원자" 버튼 — 클릭 opts 가 원소와 다르므로 별도 함수(기존 결정 그대로).
+  // data-pt-el 은 유지해 syncPeriodicSelection() 의 하이라이트를 공유한다.
+  function sptGenericButton(sym, title) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "pt-cell pt-cell-generic";
+    b.className = "spt-gen";
     b.dataset.ptEl = sym;
     b.title = title;
-    const symEl = document.createElement("span");
-    symEl.className = "pt-sym";
-    symEl.textContent = sym;
-    b.appendChild(symEl);
+    b.textContent = sym;
     b.addEventListener("click", () => selectGenericAtom(sym));
     return b;
-  }
-
-  function buildGenericAtomRow() {
-    const wrap = document.createElement("div");
-    wrap.className = "pt-generic";
-    const label = document.createElement("div");
-    label.className = "pt-generic-label";
-    label.textContent = "일반 원자";
-    wrap.appendChild(label);
-    const row = document.createElement("div");
-    row.className = "pt-generic-row";
-    GENERIC_ATOMS.forEach(({ sym, title }) => row.appendChild(ptGenericButton(sym, title)));
-    wrap.appendChild(row);
-    return wrap;
-  }
-
-  function frequentElementZ(sym) {
-    for (const row of PT_MAIN) {
-      for (const cell of row) {
-        if (Array.isArray(cell) && cell[0] === sym) return cell[1];
-      }
-    }
-    return null;
-  }
-
-  // 패널·팝업 둘 다 이 함수로 만든다 — 마크업을 한 곳에서만 관리한다.
-  // opts.withHeader: true면 드래그 손잡이 + 제목 + 접기 버튼을 가진 헤더를
-  // 붙인다(상시 패널 전용 — 팝업은 임시로 뜨는 것이라 드래그 대상이 아니다).
-  // opts.compact: 헤더의 접기 버튼 초기 라벨/상태.
-  function buildPeriodicTable(opts) {
-    opts = opts || {};
-    const root = document.createElement("div");
-    root.className = "periodic-table" + (opts.compact ? " pt-compact" : "");
-
-    if (opts.withHeader) {
-      const header = document.createElement("div");
-      header.className = "pt-header";
-      const grip = document.createElement("span");
-      grip.className = "pt-grip";
-      grip.setAttribute("aria-hidden", "true");
-      grip.textContent = "⠿⠿";
-      const title = document.createElement("span");
-      title.className = "pt-title";
-      title.textContent = "주기율표 (드래그해서 옮기기)";
-      const collapseBtn = document.createElement("button");
-      collapseBtn.type = "button";
-      collapseBtn.className = "pt-collapse-btn";
-      collapseBtn.dataset.ptCollapse = "1";
-      collapseBtn.textContent = opts.compact ? "펼치기" : "접기";
-      header.append(grip, title, collapseBtn);
-      root.appendChild(header);
-      root.dataset.ptHeader = "1";
-    }
-
-    const freq = document.createElement("div");
-    freq.className = "pt-frequent";
-    FREQUENT_ELEMENTS.forEach((sym) => {
-      freq.appendChild(ptCellButton(sym, frequentElementZ(sym), true));
-    });
-    root.appendChild(freq);
-
-    // 자주 쓰는 원소 줄과 전체 표 사이 — Sketcher의 "A" 드롭다운 자리.
-    // 컴팩트 모드에서도 접히지 않는다(자주 쓰는 원소 줄과 같은 급의
-    // "항상 보이는 짧은 줄"로 취급).
-    root.appendChild(buildGenericAtomRow());
-
-    const grid = document.createElement("div");
-    grid.className = "pt-grid";
-    PT_MAIN.forEach((row, r) => {
-      row.forEach((cell, c) => {
-        let el;
-        if (!cell) {
-          el = document.createElement("div");
-          el.className = "pt-cell pt-empty";
-        } else if (cell.ph) {
-          el = ptPlaceholder(cell.ph);
-        } else {
-          el = ptCellButton(cell[0], cell[1], false);
-        }
-        el.style.gridRow = String(r + 1);
-        el.style.gridColumn = String(c + 1);
-        grid.appendChild(el);
-      });
-    });
-    // 란타넘·악티넘 — 8행은 빈 여백, 9·10행에 3열부터 배치(위 표의 자리 표시와 정렬)
-    [PT_LANTHANIDES, PT_ACTINIDES].forEach((series, i) => {
-      series.forEach(([sym, z], c) => {
-        const el = ptCellButton(sym, z, false);
-        el.style.gridRow = String(9 + i);
-        el.style.gridColumn = String(3 + c);
-        grid.appendChild(el);
-      });
-    });
-    root.appendChild(grid);
-    return root;
   }
 
   function syncPeriodicSelection() {
@@ -568,7 +561,7 @@
     currentAtomLabel = sym;
     syncPeriodicSelection();
     flashSaveStatus(st, `이제 클릭하면 ${sym} 원자가 찍힙니다.`);
-    closePeriodicPopup();
+    if (!sptPinned) closeSemiPtPopup(); // 📌 고정 중이면 열어둔 채 연속 선택
   }
 
   function selectElement(sym) {
@@ -582,178 +575,261 @@
     selectAtom(sym, { label: sym, pseudo: sym, type: "gen" });
   }
 
-  // ── 패널(상시 오버레이) ───────────────────────────────────────────
-  // 상단 "주기율표" 토글 버튼은 제거했다(2026-08-11 사용자 지시) — 에디터 안
-  // 주기율표 아이콘을 새 팝업으로 대체하는 개편의 1단계. 패널 자체와 우클릭
-  // 팝업 경로는 새 팝업이 자리잡을 때까지 유지한다.
-  const periodicPanel = document.getElementById("periodicPanel");
-  let periodicOpen = false;      // 세션(이 페이지가 떠 있는 동안) 유지 — 새로고침 시 초기화된다
-  let periodicCompact = false;   // 접기 모드 — 전체 18족 표를 숨기고 자주 쓰는 줄만 남김
-  let periodicPos = null;        // {top,left}(px, #editorFrameSlot 기준) — 드래그로 옮긴 뒤에만 값이 생김
+  // ── 주기율표 팝업(런타임) ──────────────────────────────────────────
+  // 기존 상시 패널·우클릭 소형 팝업을 이 팝업 하나로 통일했다(사용자 결정
+  // 2026-08-11: 시안 v1 그대로, 우클릭도 이 팝업, 반도체 모드 기본 ON).
+  // 열리는 경로 2개: 에디터 우측 툴바 주기율표 아이콘(포크 period-table
+  // 액션이 window.parent.molaOpenPeriodicPopup 호출 — 부모 없으면 기존
+  // 대화창 폴백) · 빈 캔버스 우클릭(아래 setupCanvasContextMenu).
+  // DOM 은 지연 생성 후 hidden 토글로 재사용 — 검색어·정보줄·선택 표시가
+  // 열고 닫아도 유지된다. body 에 fixed 로 붙여 iframe 경계에 안 잘린다.
+  let sptRoot = null;
+  let sptOpen = false;
+  let sptPinned = false;   // 📌 고정 — 켜면 원소를 골라도 닫히지 않음(연속 선택)
+  let sptSemiOnly = true;  // 반도체 모드 기본 ON(사용자 확인)
+  let sptPos = null;       // {top,left} 뷰포트 px — 드래그·세션 복원 뒤에만
+  let sptSearchEl = null;
+  let sptSemiBtn = null;
+  let sptInfoEl = null;
 
-  // 위치·접기 상태를 sessionStorage 에 남긴다 — "세션 동안 기억(다시 열면 그
-  // 자리)" 요청 그대로: 탭을 닫으면 사라지고(sessionStorage 의 기본 동작),
-  // 같은 탭에서는 새로고침해도 유지된다. 실패(프라이빗 모드 등)는 조용히 무시 —
-  // 이 상태는 UX 편의일 뿐 기능 정합성에 영향이 없다.
-  const PT_STATE_KEY = "molaPeriodicPanelState";
-  function loadPeriodicState() {
+  // 위치·모드는 sessionStorage — 기존 패널의 관례 그대로(탭 닫으면 초기화,
+  // 새로고침엔 유지, 실패는 UX 편의일 뿐이므로 조용히 무시).
+  const SPT_STATE_KEY = "molaSemiPtState";
+  function loadSptState() {
     try {
-      const raw = sessionStorage.getItem(PT_STATE_KEY);
-      if (!raw) return;
-      const st = JSON.parse(raw);
-      if (typeof st.compact === "boolean") periodicCompact = st.compact;
+      const st = JSON.parse(sessionStorage.getItem(SPT_STATE_KEY) || "null");
+      if (!st) return;
+      if (typeof st.semiOnly === "boolean") sptSemiOnly = st.semiOnly;
       if (st.pos && typeof st.pos.top === "number" && typeof st.pos.left === "number") {
-        periodicPos = st.pos;
+        sptPos = st.pos;
       }
     } catch { /* 손상된 값 — 기본값으로 진행 */ }
   }
-  function savePeriodicState() {
+  function saveSptState() {
     try {
-      sessionStorage.setItem(PT_STATE_KEY, JSON.stringify({ compact: periodicCompact, pos: periodicPos }));
+      sessionStorage.setItem(SPT_STATE_KEY, JSON.stringify({ semiOnly: sptSemiOnly, pos: sptPos }));
     } catch { /* 조용히 무시 */ }
   }
-  loadPeriodicState();
+  loadSptState();
 
-  function setPeriodicOpen(open) {
-    periodicOpen = open;
-    periodicPanel.hidden = !open;
-    // 저장된 위치는 패널이 실제로 보이게 된 "지금" 다시 적용한다 — 숨겨진 동안
-    // (또는 애초에 뷰어 모드라 editorwrap 전체가 display:none인 동안)에는
-    // #editorFrameSlot/패널의 offsetWidth·clientHeight 가 0이라 클램프 계산이
-    // 부정확해진다(아래 clampPeriodicPosition 참고).
-    if (open && periodicPos) positionPeriodicPanel(periodicPos.top, periodicPos.left);
+  function sptElementFor(sym) {
+    return SEMI_ELEMENTS.find((e) => e.symbol === sym);
   }
 
-  const periodicPanelRoot = buildPeriodicTable({ withHeader: true, compact: periodicCompact });
-  periodicPanel.appendChild(periodicPanelRoot);
-  const periodicCollapseBtn = periodicPanelRoot.querySelector("[data-pt-collapse]");
-  const periodicHeaderEl = periodicPanelRoot.querySelector(".pt-header");
-
-  function setPeriodicCompact(compact) {
-    periodicCompact = compact;
-    periodicPanelRoot.classList.toggle("pt-compact", compact);
-    if (periodicCollapseBtn) periodicCollapseBtn.textContent = compact ? "펼치기" : "접기";
-    savePeriodicState();
+  // 하단 정보줄 — 호버/선택 따라 갱신(원본의 우측 상세 패널 대체).
+  function sptShowInfo(el) {
+    if (!sptInfoEl || !el) return;
+    const roles = (el.roles.length ? el.roles : ["GENERAL"])
+      .map((r) =>
+        '<span class="spt-badge' + (r === "CONTAM" ? " spt-contam" : "") + '">' +
+        (SEMI_ROLE_LABELS[r] || r) + "</span>")
+      .join("");
+    sptInfoEl.innerHTML =
+      '<div class="spt-info-sym" style="--family:' + sptFamilyVar(el.category) + '">' + el.symbol + "</div>" +
+      '<div class="spt-info-main"><div class="spt-info-name">' + el.nameKo +
+      ' <span class="spt-info-en">' + el.name + "</span></div>" +
+      '<div class="spt-info-meta">Z ' + el.z + " \u00b7 " + el.mass + " u \u00b7 " + el.categoryKo + "</div></div>" +
+      '<div class="spt-info-head">' + el.headline + "</div>" +
+      '<div class="spt-roles">' + roles + "</div>";
   }
-  if (periodicCollapseBtn) {
-    periodicCollapseBtn.addEventListener("click", (e) => {
-      e.stopPropagation();   // 헤더의 드래그 시작(pointerdown)까지 번지지 않게
-      setPeriodicCompact(!periodicCompact);
+
+  // 검색어·반도체 모드에 따라 타일을 회색화(dim). 숨기지 않고 회색만 —
+  // 표의 공간 기억 유지(업로드본의 설계 의도 그대로).
+  function sptFilter() {
+    if (!sptRoot) return;
+    const q = (sptSearchEl.value || "").trim().toLowerCase();
+    sptRoot.querySelectorAll(".spt-el").forEach((b) => {
+      const el = sptElementFor(b.dataset.ptEl);
+      const hay = [el.symbol, el.name, el.nameKo, el.categoryKo, el.headline]
+        .concat(el.roles).join(" ").toLowerCase();
+      b.classList.toggle("spt-dim", (q && !hay.includes(q)) || (sptSemiOnly && !el.roles.length));
     });
   }
 
-  // ── 패널 드래그 이동 ──────────────────────────────────────────────
-  // 위치 기준은 #editorFrameSlot(패널의 position:absolute 컨테이닝 블록) —
-  // "화면 밖으로 못 나가게"를 프레임 슬롯(에디터가 실제로 보이는 영역) 기준으로
-  // 해석한다. 기본값(top:52px/left:152px, CSS)은 왼쪽 툴바를 가리지 않도록
-  // 실측(Playwright 측정, 아래 CSS 주석 참고)해 고른 값이고,
-  // 드래그로 옮기면 이 함수들이 top/left 인라인 px 로 완전히 대체한다.
-  function clampPeriodicPosition(top, left) {
-    const slot = document.getElementById("editorFrameSlot");
-    const w = periodicPanel.offsetWidth || 260;
-    const h = periodicPanel.offsetHeight || 160;
-    const maxLeft = Math.max(0, slot.clientWidth - w);
-    const maxTop = Math.max(0, slot.clientHeight - h);
-    return { top: Math.min(Math.max(0, top), maxTop), left: Math.min(Math.max(0, left), maxLeft) };
+  function sptSetSemiOnly(v) {
+    sptSemiOnly = v;
+    if (sptSemiBtn) {
+      sptSemiBtn.classList.toggle("active", v);
+      sptSemiBtn.textContent = v ? "반도체 모드" : "전체 원소";
+    }
+    sptFilter();
+    saveSptState();
   }
-  function positionPeriodicPanel(top, left) {
-    const clamped = clampPeriodicPosition(top, left);
-    periodicPos = clamped;
-    periodicPanel.style.left = clamped.left + "px";
-    periodicPanel.style.top = clamped.top + "px";
-    periodicPanel.style.right = "auto";
-    const slot = document.getElementById("editorFrameSlot");
-    // max-height 도 새 top 기준으로 다시 계산 — 안 그러면 아래로 드래그했을 때
-    // CSS 기본값(top 52px 기준 calc)이 그대로 남아 패널이 슬롯 아래로 넘칠 수 있다.
-    periodicPanel.style.maxHeight = Math.max(120, slot.clientHeight - clamped.top - 8) + "px";
-  }
-  // 저장된 위치의 실제 적용은 setPeriodicOpen(true) 시점으로 미룬다(위 함수
-  // 참고) — 지금(모듈 초기화 시점)은 대개 뷰어 모드라 editorwrap 전체가
-  // display:none 이어서 여기서 클램프하면 크기를 0으로 잘못 재게 된다.
 
-  let dragState = null;
-  function onPanelDragMove(e) {
-    if (!dragState || e.pointerId !== dragState.pointerId) return;
-    const dx = e.clientX - dragState.startX;
-    const dy = e.clientY - dragState.startY;
-    positionPeriodicPanel(dragState.startTop + dy, dragState.startLeft + dx);
+  // Enter = 첫 검색 결과 선택(검색어가 있을 때만 — 빈칸 Enter 로 H 가
+  // 찍히는 사고 방지). DOM 순서 = 원자번호 순이라 "가장 가벼운 일치 원소".
+  function sptFirstVisibleSymbol() {
+    if (!sptSearchEl.value.trim()) return null;
+    const b = sptRoot.querySelector(".spt-el:not(.spt-dim)");
+    return b ? b.dataset.ptEl : null;
   }
-  function onPanelDragEnd() {
-    window.removeEventListener("pointermove", onPanelDragMove);
-    dragState = null;
-    savePeriodicState();
+
+  function sptClamp(top, left) {
+    const w = sptRoot.offsetWidth || 948;
+    const h = sptRoot.offsetHeight || 700;
+    return {
+      top: Math.min(Math.max(4, top), Math.max(4, window.innerHeight - h - 4)),
+      left: Math.min(Math.max(4, left), Math.max(4, window.innerWidth - w - 4)),
+    };
   }
-  if (periodicHeaderEl) {
-    periodicHeaderEl.addEventListener("pointerdown", (e) => {
-      if (e.target.closest("[data-pt-collapse]")) return;   // 접기 버튼 클릭은 드래그 아님
-      const slot = document.getElementById("editorFrameSlot");
-      const slotRect = slot.getBoundingClientRect();
-      const panelRect = periodicPanel.getBoundingClientRect();
-      dragState = {
-        pointerId: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY,
-        startTop: panelRect.top - slotRect.top,
-        startLeft: panelRect.left - slotRect.left,
+  function sptApplyPosition(top, left) {
+    const c = sptClamp(top, left);
+    sptRoot.style.top = c.top + "px";
+    sptRoot.style.left = c.left + "px";
+    return c;
+  }
+
+  function buildSptPopup() {
+    if (sptRoot) return;
+    const root = document.createElement("div");
+    root.className = "semi-pt-popup";
+    root.hidden = true;
+
+    const bar = document.createElement("div");
+    bar.className = "spt-topbar";
+    const title = document.createElement("span");
+    title.className = "spt-title";
+    title.textContent = "주기율표";
+    const dragHint = document.createElement("span");
+    dragHint.className = "spt-draghint";
+    dragHint.textContent = "⠿ 드래그로 이동";
+    const search = document.createElement("input");
+    search.className = "spt-search";
+    search.placeholder = "원소·기호·용도 검색 — Enter = 첫 결과 선택";
+    search.setAttribute("aria-label", "원소 검색");
+    const semiBtn = document.createElement("button");
+    semiBtn.type = "button";
+    semiBtn.className = "spt-toggle";
+    const pinBtn = document.createElement("button");
+    pinBtn.type = "button";
+    pinBtn.className = "spt-iconbtn";
+    pinBtn.textContent = "📌";
+    pinBtn.title = "고정 — 원소를 골라도 팝업을 닫지 않음(연속 선택)";
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "spt-iconbtn";
+    closeBtn.textContent = "✕";
+    closeBtn.title = "닫기 (Esc)";
+    bar.append(title, dragHint, search, semiBtn, pinBtn, closeBtn);
+    root.appendChild(bar);
+
+    const body = document.createElement("div");
+    body.className = "spt-body";
+    const grid = document.createElement("div");
+    grid.className = "spt-grid";
+    [["57\u201371", "Ln", 6], ["89\u2013103", "An", 7]].forEach(([range, series, row]) => {
+      const ph = document.createElement("div");
+      ph.className = "spt-ph";
+      ph.style.gridColumn = "3";
+      ph.style.gridRow = String(row);
+      ph.innerHTML = range + "<br>" + series;
+      grid.appendChild(ph);
+    });
+    SEMI_ELEMENTS.forEach((el) => grid.appendChild(sptTile(el)));
+    body.appendChild(grid);
+
+    const lower = document.createElement("div");
+    lower.className = "spt-lower";
+    const genLabel = document.createElement("span");
+    genLabel.className = "spt-gen-label";
+    genLabel.textContent = "일반 원자";
+    lower.appendChild(genLabel);
+    GENERIC_ATOMS.forEach(({ sym, title: t }) => lower.appendChild(sptGenericButton(sym, t)));
+    body.appendChild(lower);
+
+    sptInfoEl = document.createElement("div");
+    sptInfoEl.className = "spt-info";
+    body.appendChild(sptInfoEl);
+    root.appendChild(body);
+
+    document.body.appendChild(root);
+    sptRoot = root;
+    sptSearchEl = search;
+    sptSemiBtn = semiBtn;
+    sptSetSemiOnly(sptSemiOnly);
+    sptShowInfo(sptElementFor(currentAtomLabel) || sptElementFor("Si"));
+
+    search.addEventListener("input", sptFilter);
+    search.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const sym = sptFirstVisibleSymbol();
+        if (sym) selectElement(sym);
+      }
+    });
+    semiBtn.addEventListener("click", () => sptSetSemiOnly(!sptSemiOnly));
+    pinBtn.addEventListener("click", () => {
+      sptPinned = !sptPinned;
+      pinBtn.classList.toggle("active", sptPinned);
+    });
+    closeBtn.addEventListener("click", () => closeSemiPtPopup());
+
+    // 드래그 — 상단바의 빈 영역만(버튼·검색창 제외). 위치는 뷰포트 기준
+    // fixed px, 클램프는 sptClamp.
+    bar.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button, input")) return;
+      const r = root.getBoundingClientRect();
+      const st = { id: e.pointerId, x: e.clientX, y: e.clientY, top: r.top, left: r.left };
+      const move = (ev) => {
+        if (ev.pointerId !== st.id) return;
+        sptPos = sptApplyPosition(st.top + ev.clientY - st.y, st.left + ev.clientX - st.x);
       };
-      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 구형 브라우저 폴백 없이 진행 */ }
-      window.addEventListener("pointermove", onPanelDragMove);
-      window.addEventListener("pointerup", onPanelDragEnd, { once: true });
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", () => {
+        window.removeEventListener("pointermove", move);
+        saveSptState();
+      }, { once: true });
       e.preventDefault();
     });
   }
-  // 창 크기가 바뀌어도(예: 브라우저 리사이즈) 저장된 위치를 다시 클램프해
-  // 슬롯 밖으로 나가지 않게 한다.
+
+  // x·y(뷰포트 px)를 주면 그 지점 근처(우클릭), 없으면 저장된 위치 또는
+  // 화면 가운데 위쪽에 연다.
+  function openSemiPtPopup(x, y) {
+    buildSptPopup();
+    sptRoot.hidden = false;
+    sptOpen = true;
+    if (typeof x === "number" && typeof y === "number") {
+      sptApplyPosition(y, x);
+    } else if (sptPos) {
+      sptApplyPosition(sptPos.top, sptPos.left);
+    } else {
+      sptApplyPosition(56, (window.innerWidth - sptRoot.offsetWidth) / 2);
+    }
+    syncPeriodicSelection();
+    sptFilter();
+  }
+  function closeSemiPtPopup() {
+    if (!sptRoot || !sptOpen) return;
+    sptRoot.hidden = true;
+    sptOpen = false;
+  }
+  // 에디터(iframe) 쪽 period-table 액션이 부르는 훅 — 같은 출처라 직접 호출
+  // (프로젝트 관례: 부모도 contentWindow.ketcher 를 직접 부른다).
+  window.molaOpenPeriodicPopup = function () { openSemiPtPopup(); };
+
   window.addEventListener("resize", () => {
-    if (periodicOpen && periodicPos) positionPeriodicPanel(periodicPos.top, periodicPos.left);
+    if (sptOpen && sptPos) sptApplyPosition(sptPos.top, sptPos.left);
   });
 
-  // ── 우클릭 팝업 ───────────────────────────────────────────────────
-  let popupEl = null;
-
-  function closePeriodicPopup() {
-    if (!popupEl) return;
-    popupEl.remove();
-    popupEl = null;
-  }
-
-  function isInsidePopup(target) {
-    return !!(popupEl && target && popupEl.contains(target));
-  }
-
-  function openPeriodicPopupAt(parentX, parentY) {
-    closePeriodicPopup();
-    const popup = document.createElement("div");
-    popup.className = "periodic-table periodic-popup";
-    popup.appendChild(buildPeriodicTable({ withHeader: false }));
-    document.body.appendChild(popup);
-    // 화면 밖으로 안 나가게 보정 — 먼저 붙여서 실제 크기를 잰다.
-    const pw = popup.offsetWidth;
-    const ph = popup.offsetHeight;
-    const maxX = window.innerWidth - pw - 6;
-    const maxY = window.innerHeight - ph - 6;
-    popup.style.left = Math.max(6, Math.min(parentX, maxX)) + "px";
-    popup.style.top = Math.max(6, Math.min(parentY, maxY)) + "px";
-    popupEl = popup;
-    syncPeriodicSelection();
-  }
-
-  // ── Esc — 팝업·패널 둘 다 닫는다 ─────────────────────────────────
-  // 팝업은 부모 문서에 살지만 우클릭은 iframe(에디터) 안에서 일어나므로, 이
-  // 핸들러를 부모 document 와 iframe document 양쪽에 모두 건다(setupCanvasContextMenu
-  // 안에서 재사용). 절대 preventDefault/stopPropagation 을 부르지 않는다 — 우리
-  // 것(팝업·패널)이 열려 있지 않으면 그냥 아무 것도 안 하고 리턴해 이벤트가
-  // 그대로 흘러가게 둔다. 이렇게 하면 Ketcher 자신의 Esc 사용(모달 닫기 —
-  // Dialog.tsx:156, 도구 취소 — hotkeys.ts:195/288, ContextMenu.tsx:45 등)을
-  // 전혀 방해하지 않는다 — 같은 document 에 여러 keydown 리스너가 있어도
-  // stopPropagation/stopImmediatePropagation 을 안 부르면 전부 그대로 호출된다.
+  // ── Esc / 바깥 클릭 ──────────────────────────────────────────────
+  // 부모 document 와 iframe document 양쪽에 건다(setupCanvasContextMenu 안에서
+  // 재사용). preventDefault/stopPropagation 은 부르지 않는다 — Ketcher 자신의
+  // Esc 사용을 방해하지 않기 위한 기존 결정 그대로(원장 참조).
   function handleGlobalEscape(e) {
     if (e.key !== "Escape") return;
-    if (popupEl) { closePeriodicPopup(); return; }
-    if (periodicOpen) { setPeriodicOpen(false); }
+    // 검색창에 글자가 있으면 그것부터 지운다 — 닫는 건 다음 Esc.
+    if (sptOpen && sptSearchEl && e.target === sptSearchEl && sptSearchEl.value) {
+      sptSearchEl.value = "";
+      sptFilter();
+      return;
+    }
+    if (sptOpen) closeSemiPtPopup();
   }
   document.addEventListener("mousedown", (e) => {
-    if (popupEl && !isInsidePopup(e.target)) closePeriodicPopup();
+    // 바깥 클릭 닫기 — 고정(📌) 중에는 안 닫는다. iframe 안 클릭은 부모로
+    // 버블되지 않으므로 여기 안 걸린다(기존 팝업과 같은 한계 — 캔버스를
+    // 클릭해 원자를 찍는 순간은 selectAtom 쪽 닫기가 담당).
+    if (sptOpen && !sptPinned && sptRoot && !sptRoot.contains(e.target)) closeSemiPtPopup();
   });
   document.addEventListener("keydown", handleGlobalEscape);
 
@@ -915,7 +991,7 @@
       if (item) return;   // 원자/결합 등 위 — Ketcher 자체 메뉴에 맡긴다(가로채지 않음)
       e.preventDefault();
       const rect = frame.getBoundingClientRect();
-      openPeriodicPopupAt(rect.left + e.clientX, rect.top + e.clientY);
+      openSemiPtPopup(rect.left + e.clientX, rect.top + e.clientY);
     });
     // iframe 안에서도 클릭/Esc/Space 로 반응하게 — 부모 document 리스너는
     // iframe 내부 이벤트를 보지 못한다(별도 document). 실제 캔버스 조작(우클릭,
@@ -923,7 +999,7 @@
     // 핵심 경로다 — 부모 document 쪽 리스너는 우리 자신의 패널·버튼 등
     // 부모 쪽 UI 위에서 일어나는 경우를 위한 보조 경로.
     doc.addEventListener("mousedown", (e) => {
-      if (popupEl && !isInsidePopup(e.target)) closePeriodicPopup();
+      if (!sptPinned) closeSemiPtPopup();
     });
     doc.addEventListener("keydown", handleGlobalEscape);
     doc.addEventListener("keydown", handleGlobalSpacebar);

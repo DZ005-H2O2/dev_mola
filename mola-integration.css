@@ -81,118 +81,121 @@ button.ghost:disabled { opacity: .45; cursor: default; }
   font-family: var(--mono); font-size: 11px; line-height: 1.5; color: #eef3f9;
   background: rgba(20, 32, 46, .82); border-radius: 8px; }
 
-/* ── 주기율표 — 패널(상시 오버레이) ────────────────────────────────────
-   프레임 슬롯(에디터 iframe 을 담는 상대 위치 컨테이너) 안에 절대 위치로
-   얹는다 — iframe 폭 자체는 건드리지 않아 캔버스가 좁아지지 않는다.
-   [MOLA 2026-07-31, Sketcher UI parity 1단계] 기본 앵커를 오른쪽 가장자리
-   에서 "왼쪽 툴바 바로 오른쪽"으로 옮겼다 — Sketcher 좌측 패널처럼
-   "왼쪽에서 펼쳐지는" 인상을 주기 위함(.superpowers/sdd/
-   sketcher-ui-parity.md §3(b) 권고). Playwright로 에디터 iframe 안
-   LeftToolbar(원자 그리드까지 합쳐진 한 개의 좌측 열)의 실제
-   getBoundingClientRect() 를 측정한 값: 프레임 슬롯 기준 오른쪽 끝
-   ≈144px, 위쪽 끝 ≈53px(뷰포트 1400×900 기준, main.4a641a67.js
-   빌드) — top:52px 은 그 값과 이미 거의 일치해 그대로 두고, left 를
-   144px + 8px 여백 = 152px 로 잡아 툴바를 가리지 않으면서 바짝
-   붙였다(패널 렌더 폭 실측 ≈356px, 슬롯 폭 1342px 기준으로도 여유
-   있게 들어간다 — 좁은 창에서는 드래그로 옮기면 된다). 드래그(또는
-   세션 복원)로 한 번이라도 옮기면 이 기본값은 무시된다(아래 주석). */
-.periodic-panel { position: absolute; top: 52px; left: 152px; z-index: 5;
-  max-height: calc(100% - 68px); overflow: auto; }
-.periodic-panel[hidden] { display: none; }
-/* 드래그(또는 세션 복원)로 한 번이라도 옮기면 mola-integration.js의
-   positionPeriodicPanel() 이 top/left/max-height 를 인라인 스타일로 직접
-   덮어쓰고 right:auto 를 준다 — 인라인 스타일이 항상 이 규칙보다 우선하므로
-   별도 클래스가 필요 없다. */
-
-/* 패널·팝업 공용 껍데기 — 반투명 금지, 항상 흰 배경 + 어두운 글자만.
-   var(--panel) 등 테마 토큰을 쓰면 다크모드에서 어두운 배경으로 바뀐다 —
-   이 프로젝트는 캔버스 자체를 다크모드에서도 흰 배경으로 고정해 두고
-   있다(index.html --canvas:#fff, 주석 "도판은 항상 흰 배경(PPT용)") —
-   주기율표는 그 캔버스 위에 얹혀 원자를 찍는 도구이므로 같은 흰 바탕이어야
-   눈에 익은 배색이 유지된다. 아래 색상은 index.html 라이트 테마 토큰의
-   실제 값(--ink/--panel-2/--line/--line-2/--accent/--accent-2/--faint)을
-   그대로 하드코딩한 것 — 다크모드 미디어쿼리가 절대 못 덮어쓰게 리터럴로
-   고정한다. */
-.periodic-table { background: #ffffff; color: #14202e; border: 1px solid #d9e0ea;
-  border-radius: var(--r-card);
-  box-shadow: 0 14px 36px rgba(14,32,58,.20), 0 2px 8px rgba(14,32,58,.14);
-  padding: 5px; font-family: var(--mono); }
-
-/* ── 드래그 헤더 ───────────────────────────────────────────────────────
-   패널 변형에서만 보인다(팝업은 임시로 뜨는 것이라 드래그 대상이 아니다 —
-   JS에서 팝업 빌드 시 header 를 안 붙인다). */
-.pt-header { display: flex; align-items: center; gap: 6px; padding: 2px 4px 5px 2px;
-  margin-bottom: 4px; border-bottom: 1px solid #e3e7ee; cursor: grab;
-  -webkit-user-select: none; user-select: none; touch-action: none; }
-.pt-header:active { cursor: grabbing; }
-.pt-header .pt-grip { color: #8b97a8; font-size: 11px; letter-spacing: 1px; }
-.pt-header .pt-title { font-size: 10.5px; font-weight: 700; color: #4a5568;
-  flex: 1; }
-.pt-header .pt-collapse-btn { font-family: inherit; font-size: 10px; font-weight: 700;
-  padding: 2px 6px; border-radius: 5px; border: 1px solid #d9e0ea; background: #f3f6fa;
-  color: #17489f; cursor: pointer; line-height: 1.3; }
-.pt-header .pt-collapse-btn:hover { background: #e8eef8; }
-
-.pt-frequent { display: flex; flex-wrap: wrap; gap: 3px; padding-bottom: 5px;
-  margin-bottom: 5px; border-bottom: 1px solid #e3e7ee; max-width: 344px; }
-
-/* ── "일반 원자" 줄 — Sketcher 좌측 패널의 "A" 드롭다운 대응 ──────────────
-   자주 쓰는 원소 줄과는 다른 성격(진짜 원소가 아니라 쿼리/제네릭 원자)임을
-   시각적으로 드러내기 위해 옅은 보라 틴트 + 작은 대문자 라벨을 쓴다.
-   컴팩트 모드에서도 접히지 않는다(pt-frequent와 같은 급의 "항상 보이는
-   짧은 줄"). */
-.pt-generic { padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px solid #e3e7ee; }
-.pt-generic-label { font-size: 9px; font-weight: 700; letter-spacing: .04em;
-  color: #6b5fa8; text-transform: uppercase; margin-bottom: 3px; }
-.pt-generic-row { display: flex; flex-wrap: wrap; gap: 3px; }
-.pt-cell-generic { width: 27px; height: 27px; border-radius: 7px; font-size: 12px;
-  background: #f2effa; border: 1px solid #ded6f2; color: #4a3f7a; }
-.pt-cell-generic:hover { border-color: #8b7bc7; background: #e7e0f7; }
-.pt-cell-generic.selected { border-color: #6b5fa8; background: #e7e0f7;
-  box-shadow: 0 0 0 2px rgba(107,95,168,.18); }
-
-/* 컴팩트 모드 — 전체 18족 표를 접고 자주 쓰는 원소 줄 + 일반 원자 줄만
-   남긴다(발자국을 크게 줄이는 요청에 대한 답 — 큰 분자를 그리는 동안엔
-   이 두 줄이면 충분한 경우가 많다). 두 줄 사이(freq/generic) 구분선은
-   남기고, 마지막 줄(generic) 뒤 구분선만 없앤다(숨겨진 grid 앞에 남는
-   불필요한 여백 방지 — 기존 pt-frequent 단독 규칙과 같은 목적). */
-.periodic-table.pt-compact .pt-grid { display: none; }
-.periodic-table.pt-compact .pt-generic { border-bottom: 0; margin-bottom: 0;
-  padding-bottom: 1px; }
-
-.pt-grid { display: grid; grid-template-columns: repeat(18, 17px);
-  grid-auto-rows: 17px; gap: 1.5px; }
-
-.pt-cell { display: flex; align-items: center; justify-content: center;
-  width: 17px; height: 17px; border-radius: 4px; border: 1px solid transparent;
-  background: #f3f6fa; font-weight: 700; font-size: 9px; line-height: 1;
-  cursor: pointer; padding: 0; position: relative; color: #14202e; }
-.pt-cell:hover { border-color: rgba(30,91,198,.34); background: rgba(30,91,198,.10); }
-.pt-cell.selected { border-color: #1e5bc6; background: rgba(30,91,198,.10);
-  box-shadow: 0 0 0 2px rgba(30,91,198,.10); }
-.pt-cell-big { width: 27px; height: 27px; border-radius: 7px; font-size: 12px; }
-.pt-cell.pt-empty { background: transparent; border: 0; cursor: default; }
-.pt-cell.pt-ph { background: transparent; border: 1px dashed #c5cedb;
-  color: #8b97a8; font-size: 7px; font-weight: 600; cursor: default; }
-.pt-sym { pointer-events: none; }
-.pt-z { position: absolute; top: 0; right: 1px; font-size: 5px;
-  font-weight: 600; color: #8b97a8; pointer-events: none; }
-
-/* Telex(캔버스 원자 기호와 같은 서체) — mola-integration.js가 에디터 번들의
-   asset-manifest.json 에서 실제 해시 경로를 읽어 @font-face 를 런타임에
-   주입하고, 성공하면 documentElement 에 이 클래스를 붙인다. 주입 실패(오프라인,
-   manifest 구조 변경 등) 시에는 클래스가 안 붙어 기존 --mono 서체로 조용히
-   폴백한다 — 실패해도 패널 자체는 깨지지 않는다. */
-html.pt-telex-loaded .pt-sym { font-family: "Telex", var(--mono); }
-
-/* ── 주기율표 — 우클릭 팝업 ──────────────────────────────────────────
-   빈 캔버스 우클릭 지점에 뜨는 변형 — 부모 문서(body) 최상단에 붙어
-   iframe 의 overflow:hidden 프레임 경계에 잘리지 않는다. */
-.periodic-popup { position: fixed; z-index: 1000; }
-
-@media (max-width: 680px) {
-  .pt-grid { grid-template-columns: repeat(18, 15px); grid-auto-rows: 15px; }
-  .pt-cell { width: 15px; height: 15px; font-size: 8px; }
-  .pt-cell-big { width: 23px; height: 23px; font-size: 11px; }
-  .pt-cell-generic { width: 23px; height: 23px; font-size: 11px; }
+/* ── 주기율표 팝업(반도체 강조판) ─────────────────────────────────────
+   사용자 업로드 semiconductor_periodic_table_desktop_v5.html 를 팝업으로
+   개작(시안 v1 승인, 2026-08-11). 색은 업로드본의 "08 Ice Lab" 팔레트를
+   고정 리터럴로 가져왔다 — 팔레트는 원소군 색만 바꾸고 크롬(배경·선)은
+   중립 고정이라는 원본 설계 그대로. 배경은 항상 흰색(다크모드 무시) —
+   캔버스가 항상 흰 배경인 것과 같은 이유(옛 패널 주석의 결정 계승). */
+.semi-pt-popup {
+  --spt-alkali: #e6b2a4; --spt-alkaline: #dfce91; --spt-transition: #9fc7e6;
+  --spt-post: #9ed3d0; --spt-metalloid: #bdd59f; --spt-nonmetal: #a5d7ca;
+  --spt-halogen: #d8acca; --spt-noble: #aaaedc; --spt-lanthanide: #dfb5ab;
+  --spt-actinide: #cfa9bb; --spt-mix: 70%;
+  --spt-line: #d9dee3; --spt-text: #25313a; --spt-soft: #53616a;
+  --spt-accent: #607f90; --spt-accent-soft: #e7eef2;
+  position: fixed; z-index: 1000; width: 948px;
+  max-width: calc(100vw - 8px); max-height: calc(100vh - 8px); overflow: auto;
+  background: #fff; color: var(--spt-text);
+  border: 1px solid var(--spt-line); border-radius: 12px;
+  box-shadow: 0 12px 34px rgba(43, 54, 62, .22);
 }
+.semi-pt-popup[hidden] { display: none; }
+
+.spt-topbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-bottom: 1px solid var(--spt-line); background: #fafbfc; cursor: grab;
+  -webkit-user-select: none; user-select: none; touch-action: none;
+  position: sticky; top: 0; z-index: 2; }
+.spt-topbar:active { cursor: grabbing; }
+.spt-title { font-size: 13px; font-weight: 800; letter-spacing: -.02em; }
+.spt-draghint { font-size: 10px; color: #98a2aa; }
+.spt-search { margin-left: auto; width: 250px; height: 30px; padding: 0 10px;
+  border: 1px solid var(--spt-line); border-radius: 8px; background: #fff;
+  color: var(--spt-text); font: inherit; font-size: 12px; outline: none; }
+.spt-search:focus { border-color: var(--spt-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--spt-accent) 12%, transparent); }
+.spt-toggle { height: 30px; padding: 0 10px; border: 1px solid var(--spt-line);
+  border-radius: 8px; background: #fff; color: var(--spt-soft); font: inherit;
+  font-size: 12px; cursor: pointer; }
+.spt-toggle.active { background: var(--spt-accent-soft); color: var(--spt-accent);
+  border-color: color-mix(in srgb, var(--spt-accent) 35%, var(--spt-line)); }
+.spt-iconbtn { width: 30px; height: 30px; border: 1px solid var(--spt-line);
+  border-radius: 8px; background: #fff; color: var(--spt-soft); font-size: 14px;
+  line-height: 1; cursor: pointer; }
+.spt-iconbtn.active { background: var(--spt-accent-soft); color: var(--spt-accent);
+  border-color: color-mix(in srgb, var(--spt-accent) 35%, var(--spt-line)); }
+
+.spt-body { padding: 9px 10px 6px; }
+.spt-grid { display: grid; grid-template-columns: repeat(18, 48px);
+  grid-auto-rows: 56px; gap: 3px; width: max-content; margin: 0 auto; }
+
+.spt-el, .spt-ph { position: relative; width: 48px; height: 56px; border-radius: 7px; }
+.spt-el { display: block; padding: 0; text-align: left; cursor: pointer;
+  overflow: hidden; color: var(--spt-text);
+  border: 1px solid color-mix(in srgb, var(--family) 47%, var(--spt-line));
+  background: color-mix(in srgb, var(--family) var(--spt-mix), white);
+  transition: transform .1s ease, border-color .1s ease, box-shadow .1s ease; }
+.spt-el::before { content: ""; position: absolute; left: 4px; right: 4px; top: 0;
+  height: 2px; border-radius: 0 0 3px 3px; opacity: .26;
+  background: color-mix(in srgb, var(--family) 68%, var(--spt-text)); }
+.spt-el:hover { transform: translateY(-1px); z-index: 3;
+  border-color: color-mix(in srgb, var(--family) 45%, var(--spt-text));
+  box-shadow: 0 4px 10px rgba(55, 65, 70, .13); }
+.spt-el.selected { border-color: var(--spt-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--spt-accent) 20%, transparent),
+    0 4px 10px rgba(55, 65, 70, .1); }
+/* 반도체 모드 비핵심·검색 불일치 — 순수 회색(원소군 색 흔적 없음, 원본 설계) */
+.spt-el.spt-dim { background: #e8ebed; border-color: #d9dee1; color: #949ca2; }
+.spt-el.spt-dim::before { display: none; }
+.spt-el.spt-dim .spt-z, .spt-el.spt-dim .spt-nm { color: #949ca2; }
+.spt-el.spt-dim:hover { border-color: #cbd1d5; background: #e4e7e9; }
+
+.spt-z { position: absolute; top: 4px; left: 5px; font-size: 8px; line-height: 1;
+  color: #6f7b83; font-weight: 650; pointer-events: none; }
+.spt-sym { position: absolute; left: 0; right: 0; top: 14px; text-align: center;
+  font-weight: 830; font-size: 19px; letter-spacing: -.03em; line-height: 1;
+  pointer-events: none; }
+.spt-nm { position: absolute; left: 2px; right: 2px; bottom: 5px; text-align: center;
+  font-size: 6.8px; font-weight: 600; color: #5a666d; line-height: 1;
+  white-space: nowrap; overflow: hidden; letter-spacing: -.04em; pointer-events: none; }
+.spt-ph { display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--spt-line); background: #f0f2f3; color: #879198;
+  font-size: 7px; line-height: 1.3; text-align: center; }
+
+.spt-lower { display: flex; gap: 3px; align-items: center; width: max-content;
+  margin: 4px auto 0; }
+.spt-gen-label { writing-mode: vertical-rl; font-size: 8px; color: #98a2aa;
+  margin-right: 3px; }
+.spt-gen { width: 48px; height: 38px; border-radius: 7px; font-weight: 800;
+  font-size: 15px; color: var(--spt-soft); cursor: pointer;
+  border: 1px dashed color-mix(in srgb, var(--spt-accent) 38%, var(--spt-line));
+  background: color-mix(in srgb, var(--spt-accent-soft) 55%, white); }
+.spt-gen:hover { border-color: var(--spt-accent); color: var(--spt-accent); }
+.spt-gen.selected { border-style: solid; border-color: var(--spt-accent);
+  color: var(--spt-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--spt-accent) 18%, transparent); }
+
+.spt-info { display: flex; align-items: center; gap: 10px; margin: 8px 2px 6px;
+  padding: 7px 9px; border: 1px solid var(--spt-line); border-radius: 9px;
+  background: #f8fafb; min-height: 48px; }
+.spt-info-sym { width: 38px; height: 38px; border-radius: 8px; display: grid;
+  place-items: center; font-size: 19px; font-weight: 900; flex: none;
+  background: color-mix(in srgb, var(--family, #9fc7e6) 58%, white);
+  border: 1px solid color-mix(in srgb, var(--family, #9fc7e6) 46%, var(--spt-line)); }
+.spt-info-main { min-width: 150px; }
+.spt-info-name { font-size: 13px; font-weight: 800; }
+.spt-info-en { font-weight: 500; color: #7a8794; }
+.spt-info-meta { font-size: 10px; color: #667483; margin-top: 2px; }
+.spt-info-head { font-size: 11.5px; color: #53616d; font-weight: 650; flex: 1;
+  margin-left: 2px; }
+.spt-roles { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.spt-badge { font-size: 8px; font-weight: 800; letter-spacing: .03em;
+  padding: 3px 6px; border-radius: 5px; color: var(--spt-accent);
+  background: var(--spt-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--spt-accent) 30%, var(--spt-line)); }
+.spt-badge.spt-contam { border-color: #d7aab0; color: #9d5560; background: #f8e9ec; }
+
+/* 캔버스 원자 기호와 같은 서체(Telex) — mola-integration.js 가 런타임 주입
+   성공 시 documentElement 에 클래스를 붙인다(실패 시 조용히 기본 서체). */
+html.pt-telex-loaded .spt-sym,
+html.pt-telex-loaded .spt-info-sym { font-family: "Telex", var(--mono); }

@@ -2188,6 +2188,9 @@
         // 포함)을 그대로 존중해 그린다. 확정 입체중심 렌더는 바뀌지 않는다
         // (tools/extract-rdkit.mjs 변환 6, .superpowers/sdd/wavy-bond-fix.md 참고).
         useMolBlockWedging: true,
+        // [MOLA] 라벨-결합 추가 여백 — 에디터 MOLA_LABEL_CLEARANCE.extraPadRatio
+        // 와 같은 값(0.08, 폰트 대비 비율). extract-rdkit 변환 6.5.
+        additionalAtomLabelPadding: 0.08,
         // 원자가 겹쳐도 빨간 경고 네모(□)를 그리지 않는다. PubChem 3D 좌표를
         // 2D로 쓰면 겹침이 흔한데, 그 경고 박스가 오히려 지저분해 보인다.
         flagCloseContactsDist: -1,

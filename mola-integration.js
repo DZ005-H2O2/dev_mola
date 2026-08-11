@@ -39,6 +39,9 @@
     "rgroup-label",
     "rgroup-fragment",
     "rgroup-attpoints",
+    // Aromatize 버튼이 단일 토글(방향족이면 케쿨레로, 아니면 방향족으로)이 되면서
+    // 별도 Dearomatize 버튼은 중복 — 포크 server.ts 의 arom thunk 참조(2026-08-11).
+    "dearom",
   ];
   const EDITOR_SRC =
     "assets/editor/index.html?hiddenControls=" + HIDDEN_CONTROLS.join(",");

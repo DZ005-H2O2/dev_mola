@@ -88,7 +88,6 @@
     '            title="길이 고정 — 그릴 땐 표준 결합 길이, 드래그 회전 땐 원래 길이 유지 (드래그 중 Alt = 임시 해제)">↔</button>' +
     "  </div>" +
     '  <div class="editbar-actions">' +
-    '    <button id="periodicToggleBtn" class="ghost" type="button" aria-pressed="false">주기율표</button>' +
     '    <span class="split-btn">' +
     '      <button id="copyImageBtn" class="ghost" type="button" disabled>📋 그림 복사</button>' +
     '      <button id="copyImageMenuBtn" class="ghost split-caret" type="button" disabled' +
@@ -584,8 +583,10 @@
   }
 
   // ── 패널(상시 오버레이) ───────────────────────────────────────────
+  // 상단 "주기율표" 토글 버튼은 제거했다(2026-08-11 사용자 지시) — 에디터 안
+  // 주기율표 아이콘을 새 팝업으로 대체하는 개편의 1단계. 패널 자체와 우클릭
+  // 팝업 경로는 새 팝업이 자리잡을 때까지 유지한다.
   const periodicPanel = document.getElementById("periodicPanel");
-  const periodicToggleBtn = document.getElementById("periodicToggleBtn");
   let periodicOpen = false;      // 세션(이 페이지가 떠 있는 동안) 유지 — 새로고침 시 초기화된다
   let periodicCompact = false;   // 접기 모드 — 전체 18족 표를 숨기고 자주 쓰는 줄만 남김
   let periodicPos = null;        // {top,left}(px, #editorFrameSlot 기준) — 드래그로 옮긴 뒤에만 값이 생김
@@ -616,15 +617,12 @@
   function setPeriodicOpen(open) {
     periodicOpen = open;
     periodicPanel.hidden = !open;
-    periodicToggleBtn.setAttribute("aria-pressed", String(open));
     // 저장된 위치는 패널이 실제로 보이게 된 "지금" 다시 적용한다 — 숨겨진 동안
     // (또는 애초에 뷰어 모드라 editorwrap 전체가 display:none인 동안)에는
     // #editorFrameSlot/패널의 offsetWidth·clientHeight 가 0이라 클램프 계산이
     // 부정확해진다(아래 clampPeriodicPosition 참고).
     if (open && periodicPos) positionPeriodicPanel(periodicPos.top, periodicPos.left);
   }
-
-  periodicToggleBtn.addEventListener("click", () => setPeriodicOpen(!periodicOpen));
 
   const periodicPanelRoot = buildPeriodicTable({ withHeader: true, compact: periodicCompact });
   periodicPanel.appendChild(periodicPanelRoot);
